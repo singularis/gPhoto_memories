@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Access denided!</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles/main.css') }}">
+    <link rel="preconnect" href="https://fonts.gstatic.com"> 
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet">
+</head>
+<body class="body_forbidden">
+<p>Hello, {{name}}! You're logged in, but that page is forbidden for you! Email: {{email}}</p>
+<p>Try to auth from another email</p>
+<div><p>Google Profile Picture:</p>
+<img class="forbidden_avatar" src="{{profile_pic}}" alt="Google profile pic"></img></div>
+<a href="/logout">
+    <button class="bn54">
+      <span class="bn54span">Logout</span>
+    </button>
+  </a>
+</body>
+</html>
+
+

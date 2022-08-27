@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Dante Memories!</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles/main.css') }}">
+</head>
+<body>
+<h1>Remember your past {{date}}</h1> 
+{% for year in years %}
+<h2>Thats happend with you in {{year}}</h2> 
+{% for images in photos[year] %}
+<img src = "{{ url_for('static', filename=images)}}">
+{% endfor %}
+{% endfor %}
+</body>
+</html>

@@ -39,30 +39,33 @@ app.secret_key = os.environ.get("SECRET_KEY") or os.urandom(24)
 
 # User session management setup
 # https://flask-login.readthedocs.io/en/latest
-login_manager = LoginManager()
-login_manager.init_app(app)
+# login_manager = LoginManager()
+# login_manager.init_app(app)
 
 
-@login_manager.unauthorized_handler
-def unauthorized():
-    return "You must be logged in to access this content.", 403
+# @login_manager.unauthorized_handler
+# def unauthorized():
+#     return "You must be logged in to access this content.", 403
 
 
 # Naive database setup
-try:
-    init_db_command()
-except sqlite3.OperationalError:
-    # Assume it's already been created
-    pass
+# try:
+#     init_db_command()
+# except sqlite3.OperationalError:
+#     # Assume it's already been created
+#     pass
 
 # OAuth2 client setup
-client = WebApplicationClient(GOOGLE_CLIENT_ID)
+# client = WebApplicationClient(GOOGLE_CLIENT_ID)
 
 
 # Flask-Login helper to retrieve a user from our db
-@login_manager.user_loader
-def load_user(user_id):
-    return User.get(user_id)
+# @login_manager.user_loader
+# def load_user(user_id):
+#     return User.get(user_id)
+
+'''
+Uncomment after domain restore
 
 
 @app.route("/")
@@ -179,6 +182,25 @@ def get_google_provider_cfg():
     return requests.get(GOOGLE_DISCOVERY_URL).json()
 
 app.config['UPLOAD_FOLDER'] = picFolder
+
+'''
+
+# TMP non domain solution without google oath in local network
+
+@app.route("/")
+def index():
+    photos = {}
+    years = os.listdir('/static/pics')
+    for year in years:
+        imageFolder = os.path.join('/static/pics', str(year))
+        imageList = os.listdir(imageFolder)
+        imagelist = [ os.path.join('pics', str(year)) + "/" + image for image in imageList]
+        photos[int(year)] = imagelist
+    print("Dict", photos)
+    return (
+        render_template("index.html", years=[int(x) for x in years], photos=photos, date=date.today())
+    )
+
 
 if __name__ == "__main__":
     app.run(ssl_context="adhoc", host="0.0.0.0")

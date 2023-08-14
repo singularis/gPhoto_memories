@@ -20,6 +20,8 @@ Initalize the database by running app.py for the first time:
 
 ```
 python app.py
+
+ docker build --progress plain -t gphoto:0.1 . --network=host
 ```
 
 Should see "Initialized the database."

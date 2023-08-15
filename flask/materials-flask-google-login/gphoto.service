@@ -1,0 +1,12 @@
+[Unit]
+Description=gphoto-flask
+After=network.target
+
+[Service]
+User=dante
+WorkingDirectory=<path>
+ExecStart=/usr/bin/python3 <path>
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

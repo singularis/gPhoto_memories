@@ -15,6 +15,7 @@ spec:
       containers:
         - name: gphoto-flask
           image: gphoto:0.1
+          imagePullPolicy: Never
           ports:
             - containerPort: 5000
           volumeMounts:

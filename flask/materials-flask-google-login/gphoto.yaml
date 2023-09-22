@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: gphoto-flask-deployment
+  namespace: gphoto
 spec:
   replicas: 1
   selector:
@@ -14,26 +15,28 @@ spec:
     spec:
       containers:
         - name: gphoto-flask
-          image: gphoto:0.1
-          imagePullPolicy: Never
+          image: singularis314/gphoto:0.2
+          imagePullPolicy: Always
           ports:
             - containerPort: 5000
           volumeMounts:
             - name: photos-volume
-              mountPath: /static/pics
+              mountPath: /app/static/pics/
       volumes:
         - name: photos-volume
           hostPath:
             path: /home/dante/gPhoto/flask/materials-flask-google-login/static/pics/
+            type: Directory
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: gphoto-flask-service
+  name: gphoto-metal-ln
+  namespace: gphoto
 spec:
+  ports:
+  - port: 448
+    targetPort: 5000
   selector:
     app: gphoto-flask
-  ports:
-    - protocol: TCP
-      port: 5000
-  type: NodePort
+  type: LoadBalancer

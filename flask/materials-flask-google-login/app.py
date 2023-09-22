@@ -4,6 +4,7 @@ import os
 import sqlite3
 from jinja2.utils import markupsafe 
 from datetime import date, timedelta, datetime
+import logging
 markupsafe.Markup()
 # Third party libraries
 from flask import Flask, redirect, request, url_for, render_template
@@ -21,9 +22,10 @@ import requests
 from db import init_db_command
 from user import User
 
-picFolder = os.path.join('static', 'pics')
+picFolder = '/app/static/pics/'
 
-
+logging.basicConfig()
+logging.getLogger().setLevel(logging.DEBUG)
 
 
 # Configuration
@@ -35,10 +37,10 @@ GOOGLE_DISCOVERY_URL = (
 
 # Flask app setup
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY") or os.urandom(24)
+# app.secret_key = os.environ.get("SECRET_KEY") or os.urandom(24)
 
-# User session management setup
-# https://flask-login.readthedocs.io/en/latest
+# # User session management setup
+# # https://flask-login.readthedocs.io/en/latest
 # login_manager = LoginManager()
 # login_manager.init_app(app)
 
@@ -48,18 +50,18 @@ app.secret_key = os.environ.get("SECRET_KEY") or os.urandom(24)
 #     return "You must be logged in to access this content.", 403
 
 
-# Naive database setup
+# # Naive database setup
 # try:
 #     init_db_command()
 # except sqlite3.OperationalError:
 #     # Assume it's already been created
 #     pass
 
-# OAuth2 client setup
+# # OAuth2 client setup
 # client = WebApplicationClient(GOOGLE_CLIENT_ID)
 
 
-# Flask-Login helper to retrieve a user from our db
+# # Flask-Login helper to retrieve a user from our db
 # @login_manager.user_loader
 # def load_user(user_id):
 #     return User.get(user_id)
@@ -71,7 +73,7 @@ Uncomment after domain restore
 @app.route("/")
 def index():
     if current_user.is_authenticated:
-        if current_user.email in ["list_of_auth_mail"]:
+        if current_user.email in ["singularis314@gmail.com", "ivanova.olga.m15@gmail.com", "danteiva3141@gmail.com"]:
             photos = {}
             years = os.listdir('/home/ubuntu/gPhoto/flask/materials-flask-google-login/static/pics')
             for year in years:
@@ -181,22 +183,25 @@ def logout():
 def get_google_provider_cfg():
     return requests.get(GOOGLE_DISCOVERY_URL).json()
 
+'''
 app.config['UPLOAD_FOLDER'] = picFolder
 
-'''
 
 # TMP non domain solution without google oath in local network
 
 @app.route("/")
 def index():
     photos = {}
-    years = os.listdir('/static/pics')
+    years = os.listdir(picFolder)
+    logging.info(f"years {years}")
     for year in years:
-        imageFolder = os.path.join('/static/pics', str(year))
+        print(os.getcwd())
+        imageFolder = os.path.join(picFolder, str(year))
+        print(imageFolder)
         imageList = os.listdir(imageFolder)
         imagelist = [ os.path.join('pics', str(year)) + "/" + image for image in imageList]
         photos[int(year)] = imagelist
-    print("Dict", photos)
+    logging.info(f"photos {photos}")
     return (
         render_template("index.html", years=[int(x) for x in years], photos=photos, date=date.today())
     )

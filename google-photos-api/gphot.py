@@ -1,4 +1,4 @@
-import os, glob
+import os
 import shutil
 import json
 import pickle
@@ -6,7 +6,7 @@ import pandas
 import requests
 import pandas as pd
 from googleapiclient.discovery import build
-from datetime import date, timedelta, datetime
+from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import Flow, InstalledAppFlow
@@ -14,7 +14,7 @@ from google_auth_oauthlib.flow import Flow, InstalledAppFlow
 class GooglePhotosApi:
     def __init__(self,
                  api_name = 'photoslibrary',
-                 client_secret_file= r'../gPhoto_credentials.json',
+                 client_secret_file= r'./gcp-credentials/gPhoto_credentials.json',
                  api_version = 'v1',
                  scopes = ['https://www.googleapis.com/auth/photoslibrary']):
         '''
@@ -29,7 +29,7 @@ class GooglePhotosApi:
         self.client_secret_file = client_secret_file
         self.api_version = api_version
         self.scopes = scopes
-        self.cred_pickle_file = f'/home/ubuntu/gPhoto/google-photos-api/credentials/token_{self.api_name}_{self.api_version}.pickle'
+        self.cred_pickle_file = f'/app/credentials/token_{self.api_name}_{self.api_version}.pickle'
 
         self.cred = None
 
@@ -146,7 +146,7 @@ def list_of_media_items(year, month, day, media_items_df):
 
 # Images should only be downloaded if they are not already available in downloads
 # Herefor the following code snippet, creates a list with all filenames in the /downloads/ folder
-files_list = os.listdir(r'/home/ubuntu/gPhoto/flask/materials-flask-google-login/static/pics')
+files_list = os.listdir(r'/app/static/pics')
 files_list_df = pd.DataFrame(files_list)
 files_list_df = files_list_df.rename(columns={0: "filename"})
 files_list_df.head(2)
@@ -157,7 +157,7 @@ print(date_list)
 
 media_items_df = pd.DataFrame()
 
-destination_folder = '/home/ubuntu/gPhoto/flask/materials-flask-google-login/static/pics'
+destination_folder = '/app/static/pics'
 
 #Remove all files
 shutil.rmtree(destination_folder)
@@ -173,11 +173,11 @@ for date in date_list:
     if len(items_df) > 0:
         # full outer join of items_df and files_list_df, the result is a list of items of the given 
         #day that have not been downloaded yet
-        items_not_yet_downloaded_df = pd.merge(items_df, files_list_df,on='filename',how='left')
-        items_not_yet_downloaded_df.head(2)
+        # items_not_yet_downloaded_df = pd.merge(items_df, files_list_df,on='filename',how='left')
+        # items_not_yet_downloaded_df.head(2)
     
         # download all items in items_not_yet_downloaded
-        for index, item in items_not_yet_downloaded_df.iterrows():
+        for index, item in items_df.iterrows():
             url = item.baseUrl
             response = requests.get(url)
 
@@ -198,5 +198,5 @@ current_datetime = str(datetime.now())
 filename = f'item-list-{current_datetime}.csv'
 
 #save a list with all items in specified time frame
-media_items_df.to_csv(f'/home/ubuntu/gPhoto/google-photos-api/media_items_list/{filename}', index=True)
+media_items_df.to_csv(f'/app/media_items_list/{filename}', index=True)
 print("Сycle is done")

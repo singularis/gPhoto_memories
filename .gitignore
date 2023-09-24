@@ -127,3 +127,6 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+gPhoto_credentials.json
+credentials
+secret_data/

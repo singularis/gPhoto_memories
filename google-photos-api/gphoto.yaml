@@ -1,0 +1,74 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: gphoto-downloader
+  namespace: gphoto
+spec:
+  schedule: "0 1 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: gphoto-downloader
+            image: singularis314/gphoto_downloader:0.2
+            imagePullPolicy: Always
+            command: ["sleep", "3600"]
+            volumeMounts:
+              - name: gphoto-pvc
+                mountPath: /app/static/
+              - name: gphoto-credentials-pv
+                mountPath: /app/credentials/
+              - name: gphoto-gcp-credentials
+                mountPath: /app/gcp-credentials/
+          volumes:
+            - name: gphoto-pvc
+              persistentVolumeClaim:
+                claimName: gphoto-pvc
+            - name: gphoto-credentials-pv
+              persistentVolumeClaim:
+                claimName: gphoto-credentials-pv
+            - name: gphoto-gcp-credentials
+              secret:
+                secretName: gphoto-gcp-credentials
+                items:
+                  - key: gPhoto_credentials.json
+                    path: gPhoto_credentials.json
+          restartPolicy: OnFailure
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: gphoto-credentials-pv
+  namespace: gphoto
+spec:
+  capacity:
+    storage: 100Mi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-storage
+  local:
+    path: /other_hdd/gphoto-credentials
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - "racoon"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gphoto-credentials-pv
+  namespace: gphoto
+spec:
+  storageClassName: local-storage
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi

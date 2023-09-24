@@ -20,13 +20,12 @@ spec:
           ports:
             - containerPort: 5000
           volumeMounts:
-            - name: photos-volume
-              mountPath: /app/static/pics/
+            - name: gphoto-pvc
+              mountPath: /app/static/
       volumes:
-        - name: photos-volume
-          hostPath:
-            path: /home/dante/gPhoto/flask/materials-flask-google-login/static/pics/
-            type: Directory
+        - name: gphoto-pvc
+          persistentVolumeClaim:
+            claimName: gphoto-pvc
 ---
 apiVersion: v1
 kind: Service
@@ -40,3 +39,40 @@ spec:
   selector:
     app: gphoto-flask
   type: LoadBalancer
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: gphoto-pv
+  namespace: gphoto
+spec:
+  capacity:
+    storage: 5Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Recycle
+  storageClassName: local-storage
+  local:
+    path: /other_hdd/gphoto
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - "racoon"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gphoto-pvc
+  namespace: gphoto
+spec:
+  storageClassName: local-storage
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi

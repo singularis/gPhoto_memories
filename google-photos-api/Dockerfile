@@ -6,6 +6,6 @@ WORKDIR /app
 
 COPY . /app
 
-RUN mkdir ./media_items_list
-
 RUN pip install --no-cache-dir -r requirements.txt
+
+CMD ["python", "-u", "/app/gphot.py"]

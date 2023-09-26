@@ -11,9 +11,8 @@ spec:
         spec:
           containers:
           - name: gphoto-downloader
-            image: singularis314/gphoto_downloader:0.2
+            image: singularis314/gphoto_downloader:0.3
             imagePullPolicy: Always
-            command: ["sleep", "3600"]
             volumeMounts:
               - name: gphoto-pvc
                 mountPath: /app/static/

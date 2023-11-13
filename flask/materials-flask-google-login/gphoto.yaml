@@ -34,7 +34,8 @@ metadata:
   namespace: gphoto
 spec:
   ports:
-  - port: 448
+  - name: gphoto-flask
+    port: 448
     targetPort: 5000
   selector:
     app: gphoto-flask

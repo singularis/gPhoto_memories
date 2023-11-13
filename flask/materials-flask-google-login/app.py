@@ -7,7 +7,7 @@ from datetime import date, timedelta, datetime
 import logging
 markupsafe.Markup()
 # Third party libraries
-from flask import Flask, redirect, request, url_for, render_template
+from flask import Flask, redirect, request, url_for, render_template, Response
 from flask_login import (
     LoginManager,
     current_user,
@@ -17,6 +17,10 @@ from flask_login import (
 )
 from oauthlib.oauth2 import WebApplicationClient
 import requests
+from prometheus_client import start_http_server, Summary, Counter, generate_latest, CONTENT_TYPE_LATEST
+import random
+import time
+
 
 # Internal imports
 from db import init_db_command
@@ -34,6 +38,10 @@ GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", None)
 GOOGLE_DISCOVERY_URL = (
     "https://accounts.google.com/.well-known/openid-configuration"
 )
+
+# Create a metric to track time spent and requests made.
+REQUEST_TIME = Summary('request_processing_seconds', 'Time spent processing request')
+REQUEST_COUNTER = Counter('app_requests_total', 'Total number of requests')
 
 # Flask app setup
 app = Flask(__name__)
@@ -186,11 +194,17 @@ def get_google_provider_cfg():
 '''
 app.config['UPLOAD_FOLDER'] = picFolder
 
+# Decorate function with metric.
+@REQUEST_TIME.time()
+def process_request(t):
+    """A dummy function that takes some time."""
+    time.sleep(t)
 
 # TMP non domain solution without google oath in local network
 
 @app.route("/")
 def index():
+    REQUEST_COUNTER.inc()  # Increment the counter
     photos = {}
     years = os.listdir(picFolder)
     logging.info(f"years {years}")
@@ -206,6 +220,10 @@ def index():
         render_template("index.html", years=[int(x) for x in years], photos=photos, date=date.today())
     )
 
+# Endpoint for Prometheus to scrape
+@app.route('/metrics')
+def metrics():
+    return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
 
 if __name__ == "__main__":
     app.run(ssl_context="adhoc", host="0.0.0.0")

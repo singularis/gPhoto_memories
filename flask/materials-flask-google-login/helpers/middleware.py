@@ -18,12 +18,12 @@ def start_timer():
 
 def stop_timer(response):
     resp_time = time.time() - request.start_time
-    REQUEST_LATENCY.labels('webapp', request.path).observe(resp_time)
+    REQUEST_LATENCY.labels('gphoto', request.path).observe(resp_time)
     return response
 
 
 def record_request_data(response):
-    REQUEST_COUNT.labels('webapp', request.method, request.path,
+    REQUEST_COUNT.labels('gphoto', request.method, request.path,
                          response.status_code).inc()
     return response
 

@@ -10,7 +10,6 @@ import prometheus_client
 picFolder = '/app/static/pics/'
 
 logging.basicConfig()
-logging.getLogger().setLevel(logging.DEBUG)
 
 # Flask app setup
 app = Flask(__name__)
@@ -26,9 +25,7 @@ def index():
     years = os.listdir(picFolder)
     logging.info(f"years {years}")
     for year in years:
-        print(os.getcwd())
         imageFolder = os.path.join(picFolder, str(year))
-        print(imageFolder)
         imageList = os.listdir(imageFolder)
         imagelist = [os.path.join('pics', str(year)) + "/" + image for image in imageList]
         photos[int(year)] = imagelist
@@ -44,4 +41,7 @@ def metrics():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0")
+    logging.getLogger().setLevel(logging.ERROR)
+    logger = logging.getLogger('werkzeug')
+    logger.setLevel(logging.ERROR)
+app.run(host="0.0.0.0")

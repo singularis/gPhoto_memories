@@ -1,60 +1,112 @@
-@import url('https://fonts.googleapis.com/css2?family=Anton&family=Montserrat&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+
 html, body {
-  width: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    font-family: 'Roboto', sans-serif; /* Roboto is a font commonly used in Material Design */
 }
 
 body {
     background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
     animation: gradient 15s ease infinite;
+    color: #333;
 }
 
 @keyframes gradient {
-    0% {
-        background-position: 0% 50%;
-    }
-    50% {
-        background-position: 100% 50%;
-    }
-    100% {
-        background-position: 0% 50%;
-    }
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
 }
 
-h1 { color: white; font-family: 'Trocchi', serif; font-size: 45px; font-weight: normal; line-height: 48px; margin: 0; }
-
-
-h2 { color: white; font-family: 'Source Sans Pro', sans-serif; font-size: 28px; font-weight: 400; line-height: 32px; margin: 0 0 24px; }
-
-
-.subheader { font-size: 26px; font-weight: 300; color: #ffcc66; margin: 0 0 24px; }
-
-
-p { color: #4c4a37; font-family: 'Source Sans Pro', sans-serif; font-size: 18px; line-height: 32px; margin: 0 0 24px; }
-
-
-a { color: #ff9900; background: #fff4a3; text-decoration: none; }
-
-
-a:hover { color: #ffcc66 }
-
-img {
-  height: 500px; 
-  width: auto; 
-  max-height: 400px;
-  border-radius: 10px;
-  object-fit: cover;
+h1 {
+    color: white;
+    font-size: 45px;
+    font-weight: normal;
+    line-height: 48px;
+    margin: 0;
+    text-align: center;
 }
 
-.forbidden_avatar {
-    height: 200px; 
-    width: auto; 
-    border-radius: 10px;
+h2 {
+    color: white;
+    font-size: 28px;
+    font-weight: 400;
+    line-height: 32px;
+    margin: 0 0 24px;
+    text-align: center;
+}
+
+.subheader {
+    font-size: 26px;
+    font-weight: 300;
+    color: #ffcc66;
+    margin: 0 0 24px;
+}
+
+p {
+    color: #4c4a37;
+    font-size: 18px;
+    line-height: 32px;
+    margin: 0 0 24px;
+}
+
+a {
+    color: #ff9900;
+    background: #fff4a3;
+    text-decoration: none;
+    transition: color 0.3s ease; /* Smooth transition for hover effects */
+}
+
+a:hover {
+    color: #ffcc66;
+}
+
+/* Styling for images and videos */
+img, video {
+    width: 100%;
+    height: auto;
+    border-radius: 8px;
+    max-height: 400px;
+    max-width: 400px;
     object-fit: cover;
+    box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); /* Material Design shadow */
 }
 
+/* Fullscreen styling */
+.fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.9);
+    z-index: 9999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+}
+
+.fullscreen img {
+    max-width: 90%;
+    max-height: 90vh;
+    object-fit: contain;
+}
+
+#fullscreenDiv {
+    display: none;
+}
+
+#fullscreenDiv.active {
+    display: flex;
+}
+
+/* Button Styles */
 .bn54 {
     position: relative;
-    outline: none;
     text-decoration: none;
     border-radius: 50px;
     display: flex;
@@ -67,24 +119,21 @@ img {
     opacity: 1;
     background-color: #ffffff;
     border: 1px solid rgba(0, 0, 0, 0.6);
-  }
-  
-  .bn54 .bn54span {
-    font-family: Verdana, Geneva, Tahoma, sans-serif;
+    box-shadow: 0 2px 4px 0 rgba(0,0,0,0.2); /* Material Design shadow */
+    transition: box-shadow 0.3s ease; /* Smooth transition for shadow */
+}
+
+.bn54:hover {
+    box-shadow: 0 4px 8px 0 rgba(0,0,0,0.3); /* Elevated shadow on hover */
+}
+
+.bn54 .bn54span {
+    font-family: 'Roboto', sans-serif;
     color: #000000;
     font-size: 12px;
     font-weight: 500;
     letter-spacing: 0.7px;
-  }
-  
-  .bn54:hover {
-    animation: bn54rotate 0.7s ease-in-out both;
-  }
-  
-  .bn54:hover .bn54span {
-    animation: bn54storm 0.7s ease-in-out both;
-    animation-delay: 0.06s;
-  }
+}
   
   @keyframes bn54rotate {
     0% {

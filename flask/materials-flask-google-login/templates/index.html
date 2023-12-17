@@ -7,12 +7,57 @@
     <link rel="icon" type="image/jpg" href="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Photos_icon_%282020%29.svg"/>
 </head>
 <body>
-<h1>Remember your past {{date}}</h1> 
+<h1>Remember your past {{ date }}</h1>
 {% for year in years %}
-<h2>Thats happend with you in {{year}}</h2> 
-{% for images in photos[year] %}
-<img src = "{{ url_for('static', filename=images)}}">
+<div class="year-section">
+    <h2>That happened with you in {{ year }}</h2>
+    <div class="media-grid">
+        {% for image in media[year]['images'] %}
+        <img src="{{ url_for('static', filename=image) }}" alt="Image from {{ year }}" onclick="toggleFullscreen('{{ url_for('static', filename=image) }}')">
+        {% endfor %}
+        {% for video in media[year]['videos'] %}
+        <video id="video{{ loop.index }}" controls onclick="playVideo('video{{ loop.index }}')">
+            <source src="{{ url_for('static', filename=video) }}" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+        {% endfor %}
+    </div>
+</div>
 {% endfor %}
-{% endfor %}
+<!-- Fullscreen container -->
+<div id="fullscreenDiv" class="fullscreen" onclick="toggleFullscreen()">
+    <img src="" alt="Full Screen Image">
+</div>
+<script>
+    function playVideo(videoId) {
+        var video = document.getElementById(videoId);
+
+        // Check if the video is already playing
+        if (video.paused) {
+            video.play().then(() => {
+                // Video is now playing
+            }).catch((error) => {
+                console.error("Error attempting to play the video:", error);
+                // Handle the error here. For example, you can try playing the video again
+                // or provide some feedback to the user.
+            });
+        } else {
+            // If the video is playing, pause it
+            video.pause();
+        }
+    }
+    function toggleFullscreen(imageSrc) {
+        var fullscreenDiv = document.getElementById('fullscreenDiv');
+        var imgTag = fullscreenDiv.querySelector('img');
+
+        if (!fullscreenDiv.classList.contains('active')) {
+            imgTag.src = imageSrc;
+            fullscreenDiv.classList.add('active');
+        } else {
+            fullscreenDiv.classList.remove('active');
+        }
+    }
+
+</script>
 </body>
 </html>

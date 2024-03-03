@@ -131,3 +131,6 @@ dmypy.json
 gPhoto_credentials.json
 credentials
 secret_data/
+
+.uuid
+.idea

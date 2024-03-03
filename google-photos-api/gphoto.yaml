@@ -11,15 +11,23 @@ spec:
         spec:
           containers:
           - name: gphoto-downloader
-            image: singularis314/gphoto_downloader:0.3
+            image: singularis314/gphoto_downloader:0.4
             imagePullPolicy: Always
+            env:
+              - name: USERS
+                valueFrom:
+                  configMapKeyRef:
+                    name: users
+                    key: users
             volumeMounts:
               - name: gphoto-pvc
                 mountPath: /app/static/
               - name: gphoto-credentials-pv
                 mountPath: /app/credentials/
-              - name: gphoto-gcp-credentials
-                mountPath: /app/gcp-credentials/
+              - name: gphoto-gcp-credentials-dante
+                mountPath: /app/gcp-credentials-dante/
+              - name: gphoto-gcp-credentials-iva
+                mountPath: /app/gcp-credentials-iva/
           volumes:
             - name: gphoto-pvc
               persistentVolumeClaim:
@@ -27,12 +35,18 @@ spec:
             - name: gphoto-credentials-pv
               persistentVolumeClaim:
                 claimName: gphoto-credentials-pv
-            - name: gphoto-gcp-credentials
+            - name: gphoto-gcp-credentials-iva
               secret:
-                secretName: gphoto-gcp-credentials
+                secretName: gphoto-gcp-credentials-iva
                 items:
-                  - key: gPhoto_credentials.json
-                    path: gPhoto_credentials.json
+                  - key: gPhoto_credentials_iva.json
+                    path: gPhoto_credentials_iva.json
+            - name: gphoto-gcp-credentials-dante
+              secret:
+                secretName: gphoto-gcp-credentials-dante
+                items:
+                  - key: gPhoto_credentials_dante.json
+                    path: gPhoto_credentials_dante.json
           restartPolicy: OnFailure
 ---
 apiVersion: v1

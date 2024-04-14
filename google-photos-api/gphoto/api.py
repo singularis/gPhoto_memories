@@ -5,7 +5,6 @@ import os
 import logging
 import google.auth.exceptions
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -33,24 +32,24 @@ class GooglePhotosApi:
     def run_local_server(self):
         if os.path.exists(self.cred_pickle_file):
             with open(self.cred_pickle_file, 'rb') as token:
+                logger.info(f"Found token {token}")
                 self.cred = pickle.load(token)
-
         if not self.cred or not self.cred.valid:
             if self.cred and self.cred.expired and self.cred.refresh_token:
                 try:
+                    logger.debug(f"Attempt to refresh cert")
                     self.cred.refresh(Request())
                 except google.auth.exceptions.RefreshError as e:
                     logger.critical(f"Cannot refresh creds, {e}, cleaning up existing token")
                     os.unlink(self.cred_pickle_file)
                     logger.info(f"Cleaned up configs, starting clean flow")
             try:
+                logger.info(f"Starting flow client")
                 flow = InstalledAppFlow.from_client_secrets_file(self.client_secret_file, self.scopes)
                 self.cred = flow.run_local_server()
-
                 with open(self.cred_pickle_file, 'wb') as token:
                     pickle.dump(self.cred, token)
             except Exception as e:
                 logger.critical(f"Unknown except {e}, exiting")
                 exit()
-
         return self.cred

@@ -7,6 +7,7 @@ import logging
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 from gphoto import api
+from google.auth.transport.requests import Request
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,
@@ -33,6 +34,10 @@ for user in users:
     logger.info(f"Processing user: {user}")
     google_photos_api = api.GooglePhotosApi(user)
     creds = google_photos_api.run_local_server()
+
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+        logger.info("Token refreshed successfully.")
 
     def get_response_from_google_photos_api(year, month, day):
         photo_url = 'https://photoslibrary.googleapis.com/v1/mediaItems:search'
@@ -68,7 +73,7 @@ for user in users:
 
         try:
             logger.debug(f'Received data: {response.json()}')
-            for item in response.json()['mediaItems']:
+            for item in response.json().get('mediaItems', []):
                 item_data = pd.DataFrame([item])
                 items_list_df = pd.concat([items_list_df, item_data])
                 media_items_df = pd.concat([media_items_df, item_data])

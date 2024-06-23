@@ -33,11 +33,10 @@ os.makedirs(destination_folder, exist_ok=True)
 for user in users:
     logger.info(f"Processing user: {user}")
     google_photos_api = api.GooglePhotosApi(user)
+    request = Request()
     creds = google_photos_api.run_local_server()
-
-    if creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        logger.info("Token refreshed successfully.")
+    creds.refresh(request)
+    logger.info("Token refreshed successfully.")
 
     def get_response_from_google_photos_api(year, month, day):
         photo_url = 'https://photoslibrary.googleapis.com/v1/mediaItems:search'
@@ -52,11 +51,11 @@ for user in users:
         }
         headers = {
             'content-type': 'application/json',
-            'Authorization': 'Bearer {}'.format(creds.token)
+            'Authorization': f'Bearer {creds.token}'
         }
 
         try:
-            res = requests.request("POST", photo_url, data=json.dumps(payload), headers=headers)
+            res = requests.post(photo_url, json=payload, headers=headers)
             logger.debug(f"Response Raw: {res.raw}")
         except Exception as e:
             logger.error(f'Request error: {e}')
@@ -75,8 +74,8 @@ for user in users:
             logger.debug(f'Received data: {response.json()}')
             for item in response.json().get('mediaItems', []):
                 item_data = pd.DataFrame([item])
-                items_list_df = pd.concat([items_list_df, item_data])
-                media_items_df = pd.concat([media_items_df, item_data])
+                items_list_df = pd.concat([items_list_df, item_data], ignore_index=True)
+                media_items_df = pd.concat([media_items_df, item_data], ignore_index=True)
         except Exception as e:
             logger.error(f'Error processing response: {e}')
 
@@ -88,8 +87,7 @@ for user in users:
     media_items_df_init = pd.DataFrame()
     for single_date in date_list:
         items_df, media_items_df = list_of_media_items(year=single_date.year, month=single_date.month,
-                                                       day=single_date.day,
-                                                       media_items_df=media_items_df_init)
+                                                       day=single_date.day, media_items_df=media_items_df_init)
 
         if not items_df.empty:
             for index, item in items_df.iterrows():
@@ -116,4 +114,7 @@ for user in users:
     # Save a list of all media items to a csv file
     current_datetime = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f'item-list-{current_datetime}.csv'
+    media_items_df_init.to_csv(filename, index=False)
+    logger.info(f"Saved media items to {filename}")
+
 logger.info("Cycle is done")

@@ -29,13 +29,15 @@ destination_folder = '/app/static/pics'
 # Remove all files and recreate the directory
 shutil.rmtree(destination_folder, ignore_errors=True)
 os.makedirs(destination_folder, exist_ok=True)
+apis = {}
+creds = {}
 
 for user in users:
     logger.info(f"Processing user: {user}")
-    google_photos_api = api.GooglePhotosApi(user)
+    apis[user] = api.GooglePhotosApi(user)
     request = Request()
-    creds = google_photos_api.run_local_server()
-    creds.refresh(request)
+    creds[user] = apis[user].run_local_server()
+    creds[user].refresh(request)
     logger.info("Token refreshed successfully.")
 
     def get_response_from_google_photos_api(year, month, day):
@@ -51,7 +53,7 @@ for user in users:
         }
         headers = {
             'content-type': 'application/json',
-            'Authorization': f'Bearer {creds.token}'
+            'Authorization': f'Bearer {creds[user].token}'
         }
 
         try:

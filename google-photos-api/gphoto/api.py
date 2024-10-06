@@ -31,15 +31,14 @@ class GooglePhotosApi:
         if os.path.exists(self.cred_pickle_file):
             with open(self.cred_pickle_file, 'rb') as token:
                 self.cred = pickle.load(token)
-
-        if not self.cred or not self.cred.valid:
-            if self.cred and self.cred.expired and self.cred.refresh_token:
-                self.cred.refresh(Request())
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file(self.client_secret_file, self.scopes)
-                self.cred = flow.run_local_server()
-
-            with open(self.cred_pickle_file, 'wb') as token:
-                pickle.dump(self.cred, token)
-
+            if not self.cred or not self.cred.valid:
+                if self.cred and self.cred.expired and self.cred.refresh_token:
+                    logger.info(f"Refreshing token for {self.account_name}")
+                    self.cred.refresh(Request())
+                else:
+                    flow = InstalledAppFlow.from_client_secrets_file(self.client_secret_file, self.scopes)
+                    self.cred = flow.run_local_server(port=0)
+                with open(self.cred_pickle_file, 'wb') as token:
+                    pickle.dump(self.cred, token)
         return self.cred
+

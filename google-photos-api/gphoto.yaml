@@ -8,6 +8,11 @@ spec:
   jobTemplate:
     spec:
       template:
+        metadata:
+          labels:
+            app: gphoto-downloader
+          annotations:
+            co.elastic.logs/enabled: "true"
         spec:
           containers:
           - name: gphoto-downloader

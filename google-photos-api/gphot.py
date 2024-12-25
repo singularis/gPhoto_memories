@@ -35,10 +35,19 @@ creds = {}
 for user in users:
     logger.info(f"Processing user: {user}")
     apis[user] = api.GooglePhotosApi(user)
-    request = Request()
     creds[user] = apis[user].run_local_server()
-    creds[user].refresh(request)
-    logger.info("Token refreshed successfully.")
+
+    def refresh_token(user):
+        try:
+            request = Request()
+            creds[user].refresh(request)
+            logger.info(f"Token refreshed successfully for user: {user}")
+            return True
+        except Exception as e:
+            logger.error(f"Error refreshing token for user {user}: {e}")
+            return False
+
+    # --- End of Token Refresh Logic ---
 
     def get_response_from_google_photos_api(year, month, day):
         photo_url = 'https://photoslibrary.googleapis.com/v1/mediaItems:search'
@@ -59,6 +68,14 @@ for user in users:
         try:
             res = requests.post(photo_url, json=payload, headers=headers)
             logger.debug(f"Response Raw: {res.raw}")
+            if res.status_code == 401:
+                logger.warning(f"Token expired for user: {user}. Attempting to refresh...")
+                if refresh_token(user):
+                    headers['Authorization'] = f'Bearer {creds[user].token}'
+                    res = requests.post(photo_url, json=payload, headers=headers)
+                else:
+                    logger.error(f"Failed to refresh token for user: {user}. Skipping this request.")
+                    return None
         except Exception as e:
             logger.error(f'Request error: {e}')
             return None

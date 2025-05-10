@@ -1,5 +1,6 @@
 #!/bin/bash
-rm -f /other_hdd/gphoto-credentials/token_dante_photoslibrary_v1.pickle
+kubectl scale statefulset open-webui -n openwebui --replicas=0
+rm -f /other_hdd/gphoto-credentials/token_iva_photoslibrary_v1.pickle
 kubectl delete job -n gphoto test-downloader --force --grace-period=0
 kubectl create job -n gphoto --from=cronjob/gphoto-downloader  test-downloader
 echo "Waiting for pod to be ready..."
@@ -11,3 +12,4 @@ echo "Waiting for logs..."
 sleep 10
 kubectl logs -n gphoto pod/$POD_NAME
 kubectl port-forward -n gphoto pod/$POD_NAME 8080:8080
+kubectl scale statefulset open-webui -n openwebui --replicas=1

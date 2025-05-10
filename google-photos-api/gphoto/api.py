@@ -18,7 +18,7 @@ class GooglePhotosApi:
         Initialize the Google Photos API
         """
         if scopes is None:
-            scopes = ['https://www.googleapis.com/auth/photoslibrary']
+            scopes = ['https://www.googleapis.com/auth/photoslibrary.readonly']
         self.api_name = api_name
         self.account_name = account_name
         self.client_secret_file = os.path.join(client_secret_path + f"gcp-credentials-{account_name}" + f"/gPhoto_credentials_{account_name}" + ".json")

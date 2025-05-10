@@ -10,7 +10,7 @@ from gphoto import api
 from google.auth.transport.requests import Request
 
 # Configure logging
-logging.basicConfig(level=logging.INFO,
+logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     handlers=[
                         logging.FileHandler("application.log"),
@@ -35,18 +35,31 @@ creds = {}
 for user in users:
     logger.info(f"Processing user: {user}")
     apis[user] = api.GooglePhotosApi(user)
-    request = Request()
     creds[user] = apis[user].run_local_server()
-    creds[user].refresh(request)
-    logger.info("Token refreshed successfully.")
+    
+    try:
+        request = Request()
+        creds[user].refresh(request)
+        logger.info("Token refreshed successfully.")
+    except Exception as e:
+        logger.warning(f"Token refresh failed: {e}. Will try to get new credentials.")
+        # Remove the pickle file to force new credentials
+        pickle_file = f'/app/credentials/token_{user}_photoslibrary_v1.pickle'
+        if os.path.exists(pickle_file):
+            os.remove(pickle_file)
+        # Get new credentials
+        creds[user] = apis[user].run_local_server()
 
     def get_response_from_google_photos_api(year, month, day):
         photo_url = 'https://photoslibrary.googleapis.com/v1/mediaItems:search'
         payload = {
             "filters": {
                 "dateFilter": {
-                    "dates": [
-                        {"day": day, "month": month, "year": year}
+                    "ranges": [
+                        {
+                            "startDate": {"year": year, "month": month, "day": 1},
+                            "endDate": {"year": year, "month": month, "day": 31}
+                        }
                     ]
                 }
             }

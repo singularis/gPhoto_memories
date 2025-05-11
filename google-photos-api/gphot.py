@@ -69,8 +69,8 @@ for user in users:
                 "dateFilter": {
                     "ranges": [
                         {
-                            "startDate": {"year": year, "month": month, "day": 1},
-                            "endDate": {"year": year, "month": month, "day": 31}
+                            "startDate": {"year": year, "month": month, "day": day},
+                            "endDate": {"year": year, "month": month, "day": day}
                         }
                     ]
                 }
@@ -116,8 +116,8 @@ for user in users:
 
         return items_list_df, media_items_df
 
-    # Create a list with all dates between start date and today
-    date_list = pd.date_range(date.today() - relativedelta(years=20), periods=20, freq=pd.DateOffset(years=1))
+    # Create a list with only today's date
+    date_list = pd.date_range(date.today(), periods=1, freq='D')
     logger.debug(f"Dates list to fetch: {date_list}")
     media_items_df_init = pd.DataFrame()
     for single_date in date_list:

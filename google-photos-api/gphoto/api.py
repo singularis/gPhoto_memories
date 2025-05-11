@@ -36,9 +36,30 @@ class GooglePhotosApi:
                     logger.info(f"Refreshing token for {self.account_name}")
                     self.cred.refresh(Request())
                 else:
-                    flow = InstalledAppFlow.from_client_secrets_file(self.client_secret_file, self.scopes)
-                    self.cred = flow.run_local_server(port=0)
+                    flow = InstalledAppFlow.from_client_secrets_file(
+                        self.client_secret_file, 
+                        self.scopes,
+                        redirect_uri='http://localhost:8080'
+                    )
+                    self.cred = flow.run_local_server(
+                        port=8080,
+                        prompt='consent',
+                        access_type='offline'
+                    )
                 with open(self.cred_pickle_file, 'wb') as token:
                     pickle.dump(self.cred, token)
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                self.client_secret_file, 
+                self.scopes,
+                redirect_uri='http://localhost:8080'
+            )
+            self.cred = flow.run_local_server(
+                port=8080,
+                prompt='consent',
+                access_type='offline'
+            )
+            with open(self.cred_pickle_file, 'wb') as token:
+                pickle.dump(self.cred, token)
         return self.cred
 

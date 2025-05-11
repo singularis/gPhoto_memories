@@ -10,7 +10,7 @@ from gphoto import api
 from google.auth.transport.requests import Request
 
 # Configure logging
-logging.basicConfig(level=logging.INFO,
+logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     handlers=[
                         logging.FileHandler("application.log"),

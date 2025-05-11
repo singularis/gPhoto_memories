@@ -28,6 +28,7 @@ class GooglePhotosApi:
         self.cred = None
 
     def run_local_server(self):
+        os.makedirs(os.path.dirname(self.cred_pickle_file), exist_ok=True)
         if os.path.exists(self.cred_pickle_file):
             with open(self.cred_pickle_file, 'rb') as token:
                 self.cred = pickle.load(token)
@@ -38,8 +39,7 @@ class GooglePhotosApi:
                 else:
                     flow = InstalledAppFlow.from_client_secrets_file(
                         self.client_secret_file, 
-                        self.scopes,
-                        redirect_uri='http://localhost:8080'
+                        self.scopes
                     )
                     self.cred = flow.run_local_server(
                         port=8080,
@@ -51,8 +51,7 @@ class GooglePhotosApi:
         else:
             flow = InstalledAppFlow.from_client_secrets_file(
                 self.client_secret_file, 
-                self.scopes,
-                redirect_uri='http://localhost:8080'
+                self.scopes
             )
             self.cred = flow.run_local_server(
                 port=8080,

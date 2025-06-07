@@ -63,7 +63,7 @@ for user in users:
     # --- End of Token Refresh Logic ---
 
     def get_response_from_google_photos_api(year, month, day):
-        photo_url = 'https://photoslibrary.googleapis.com/v1/mediaItems:search'
+        photo_url = 'https://photospicker.googleapis.com/v1/mediaItems:search'
         payload = {
             "filters": {
                 "dateFilter": {

@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}Session Status{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-10 mx-auto">
+        <div class="card">
+            <div class="card-header">
+                <h3>Session Status Details</h3>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5>Session Information</h5>
+                        <table class="table table-borderless">
+                            <tr>
+                                <td><strong>Session ID:</strong></td>
+                                <td><code>{{ session_id }}</code></td>
+                            </tr>
+                            <tr>
+                                <td><strong>User:</strong></td>
+                                <td>{{ session_info.user }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Created:</strong></td>
+                                <td>{{ session_info.created_at }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Status:</strong></td>
+                                <td>
+                                    <span class="badge bg-{{ 'warning' if session_info.status == 'waiting_for_user' else 'success' if session_info.status == 'ready_for_download' else 'primary' if session_info.status == 'downloading' else 'secondary' }}">
+                                        {{ session_info.status.replace('_', ' ').title() }}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% if session_info.get('completed_at') %}
+                            <tr>
+                                <td><strong>Completed:</strong></td>
+                                <td>{{ session_info.completed_at }}</td>
+                            </tr>
+                            {% endif %}
+                            {% if session_info.get('downloaded_count') %}
+                            <tr>
+                                <td><strong>Downloaded:</strong></td>
+                                <td>{{ session_info.downloaded_count }} items</td>
+                            </tr>
+                            {% endif %}
+                        </table>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <h5>Actions</h5>
+                        
+                        {% if session_info.status == 'waiting_for_user' %}
+                        <div class="alert alert-info">
+                            <h6>Waiting for Photo Selection</h6>
+                            <p>Please use the picker link to select photos.</p>
+                            <a href="{{ session_info.picker_uri }}" target="_blank" class="btn btn-primary">
+                                🎯 Open Google Photos Picker
+                            </a>
+                        </div>
+                        {% elif session_info.status == 'ready_for_download' %}
+                        <div class="alert alert-success">
+                            <h6>Ready for Download</h6>
+                            <p>Photos have been selected and are ready to download.</p>
+                            <a href="{{ url_for('download_session', session_id=session_id) }}" class="btn btn-success">
+                                ⬇️ Download Selected Photos
+                            </a>
+                        </div>
+                        {% elif session_info.status == 'downloading' %}
+                        <div class="alert alert-primary">
+                            <h6>Download in Progress</h6>
+                            <p>Photos are being downloaded. Please wait...</p>
+                            <div class="spinner-border spinner-border-sm" role="status"></div>
+                        </div>
+                        {% elif session_info.status == 'completed' %}
+                        <div class="alert alert-secondary">
+                            <h6>Download Completed</h6>
+                            <p>All selected photos have been downloaded successfully.</p>
+                            {% if session_info.get('downloaded_count') %}
+                            <p><strong>{{ session_info.downloaded_count }}</strong> items were downloaded.</p>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        
+                        <div class="mt-3">
+                            <button onclick="refreshStatus()" class="btn btn-outline-primary">
+                                🔄 Refresh Status
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <div class="row mt-4">
+                    <div class="col-md-12">
+                        <h5>Session Timeline</h5>
+                        <div class="timeline">
+                            <div class="timeline-item completed">
+                                <span class="timeline-icon">✅</span>
+                                <span class="timeline-content">Session created ({{ session_info.created_at }})</span>
+                            </div>
+                            
+                            <div class="timeline-item {{ 'completed' if session_info.get('media_items_set') else 'current' if session_info.status == 'waiting_for_user' else '' }}">
+                                <span class="timeline-icon">{% if session_info.get('media_items_set') %}✅{% elif session_info.status == 'waiting_for_user' %}⏳{% else %}⭕{% endif %}</span>
+                                <span class="timeline-content">User selects photos in Google Photos</span>
+                            </div>
+                            
+                            <div class="timeline-item {{ 'completed' if session_info.status in ['downloading', 'completed'] else 'current' if session_info.status == 'ready_for_download' else '' }}">
+                                <span class="timeline-icon">{% if session_info.status in ['downloading', 'completed'] %}✅{% elif session_info.status == 'ready_for_download' %}⏳{% else %}⭕{% endif %}</span>
+                                <span class="timeline-content">Download initiated</span>
+                            </div>
+                            
+                            <div class="timeline-item {{ 'completed' if session_info.status == 'completed' else 'current' if session_info.status == 'downloading' else '' }}">
+                                <span class="timeline-icon">{% if session_info.status == 'completed' %}✅{% elif session_info.status == 'downloading' %}⏳{% else %}⭕{% endif %}</span>
+                                <span class="timeline-content">Download completed{% if session_info.get('completed_at') %} ({{ session_info.completed_at }}){% endif %}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="mt-3 text-center">
+            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+                ← Back to Home
+            </a>
+        </div>
+    </div>
+</div>
+
+<style>
+.timeline {
+    position: relative;
+    padding-left: 30px;
+}
+
+.timeline-item {
+    position: relative;
+    padding-bottom: 20px;
+    border-left: 2px solid #e9ecef;
+}
+
+.timeline-item.completed {
+    border-left-color: #28a745;
+}
+
+.timeline-item.current {
+    border-left-color: #007bff;
+}
+
+.timeline-icon {
+    position: absolute;
+    left: -10px;
+    top: 0;
+    background: white;
+    padding: 2px;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+}
+
+.timeline-content {
+    margin-left: 20px;
+    display: block;
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function refreshStatus() {
+    location.reload();
+}
+
+// Auto-refresh every 15 seconds if downloading
+{% if session_info.status == 'downloading' %}
+setTimeout(function() {
+    location.reload();
+}, 15000);
+{% endif %}
+</script>
+{% endblock %} 

@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}Session for {{ user }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <div class="card">
+            <div class="card-header">
+                <h3>Photo Selection Session for {{ user }}</h3>
+            </div>
+            <div class="card-body text-center">
+                <h5>Session Created Successfully!</h5>
+                <p class="text-muted">Session ID: {{ session_id }}</p>
+                
+                <div class="alert alert-info">
+                    <h5>📸 Select Your Photos</h5>
+                    <p>Click the button below to open Google Photos and select the photos you want to download.</p>
+                </div>
+                
+                <div class="my-4">
+                    <a href="{{ picker_uri }}" target="_blank" class="picker-link">
+                        🎯 Open Google Photos Picker
+                    </a>
+                </div>
+                
+                <div class="alert alert-warning">
+                    <h6>Important Instructions:</h6>
+                    <ol class="text-start">
+                        <li>Click the "Open Google Photos Picker" button above</li>
+                        <li>A new window/tab will open with Google Photos</li>
+                        <li>Select the photos and videos you want to download</li>
+                        <li>Confirm your selection in Google Photos</li>
+                        <li>Return to this page and check the session status</li>
+                    </ol>
+                </div>
+                
+                <div class="mt-4">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <button onclick="checkSessionStatus()" class="btn btn-outline-primary">
+                                🔄 Check Status
+                            </button>
+                        </div>
+                        <div class="col-md-6">
+                            <a href="{{ url_for('session_status', session_id=session_id) }}" class="btn btn-secondary">
+                                📊 View Detailed Status
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="status-info" class="mt-3">
+                    <div class="alert alert-secondary">
+                        <span id="status-text">Status: Waiting for user to select photos...</span>
+                    </div>
+                </div>
+                
+                <div id="download-section" class="mt-3" style="display: none;">
+                    <div class="alert alert-success">
+                        <h5>✅ Photos Selected!</h5>
+                        <p>You can now download the selected photos.</p>
+                        <a href="{{ url_for('download_session', session_id=session_id) }}" class="btn btn-success">
+                            ⬇️ Download Selected Photos
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="mt-3 text-center">
+            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+                ← Back to Home
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const sessionId = '{{ session_id }}';
+
+function checkSessionStatus() {
+    fetch(`/check_session/${sessionId}`)
+        .then(response => response.json())
+        .then(data => {
+            const statusText = document.getElementById('status-text');
+            const downloadSection = document.getElementById('download-section');
+            
+            if (data.error) {
+                statusText.textContent = `Error: ${data.error}`;
+                statusText.className = 'text-danger';
+            } else {
+                const status = data.status.replace('_', ' ');
+                const capitalizedStatus = status.charAt(0).toUpperCase() + status.slice(1);
+                statusText.textContent = `Status: ${capitalizedStatus}`;
+                
+                if (data.media_items_set) {
+                    statusText.textContent += ' - Photos selected!';
+                    statusText.className = 'text-success';
+                    downloadSection.style.display = 'block';
+                } else {
+                    statusText.className = 'text-warning';
+                    downloadSection.style.display = 'none';
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error checking session status:', error);
+            document.getElementById('status-text').textContent = 'Error checking status';
+        });
+}
+
+// Auto-check status every 10 seconds
+setInterval(checkSessionStatus, 10000);
+
+// Check status when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(checkSessionStatus, 2000);
+});
+</script>
+{% endblock %} 

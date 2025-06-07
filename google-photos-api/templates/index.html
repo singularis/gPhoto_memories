@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Google Photos Picker - Home{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <h1>Google Photos Picker API</h1>
+        <p class="lead">Select and download photos from Google Photos using the new Picker API</p>
+        
+        <div class="alert alert-info">
+            <h5>How it works:</h5>
+            <ol>
+                <li>Create a session for a user</li>
+                <li>Use the provided link to open Google Photos and select photos</li>
+                <li>Return here and download the selected photos</li>
+            </ol>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h3>Available Users</h3>
+            </div>
+            <div class="card-body">
+                {% if users %}
+                    {% for user in users %}
+                    <div class="d-grid gap-2 mb-2">
+                        <a href="{{ url_for('create_session', user=user) }}" class="btn btn-primary">
+                            Create Session for {{ user }}
+                        </a>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted">No users configured. Set the USERS environment variable with a JSON array of usernames.</p>
+                    <code>USERS='["user1", "user2"]'</code>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h3>Active Sessions</h3>
+            </div>
+            <div class="card-body">
+                {% if active_sessions %}
+                    {% for session_id, session_info in active_sessions.items() %}
+                    <div class="card mb-2">
+                        <div class="card-body">
+                            <h6 class="card-title">{{ session_info.user }}</h6>
+                            <p class="card-text">
+                                <small class="text-muted">Session: {{ session_id[:8] }}...</small><br>
+                                <span class="status-{{ session_info.status }}">
+                                    Status: {{ session_info.status.replace('_', ' ').title() }}
+                                </span>
+                            </p>
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('session_status', session_id=session_id) }}" class="btn btn-outline-primary">View</a>
+                                {% if session_info.status == 'ready_for_download' %}
+                                <a href="{{ url_for('download_session', session_id=session_id) }}" class="btn btn-success">Download</a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted">No active sessions</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h3>Important Notes</h3>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning">
+                    <h5>API Changes</h5>
+                    <p>This application uses the new Google Photos Picker API. The old Library API endpoints are being deprecated and will only work with app-created content after March 31, 2025.</p>
+                </div>
+                
+                <h5>Migration from Old System</h5>
+                <ul>
+                    <li>The new Picker API requires user interaction - photos cannot be automatically downloaded</li>
+                    <li>Users must manually select which photos they want to share with your application</li>
+                    <li>This provides better privacy and security for users</li>
+                    <li>The old automatic download approach is no longer supported for user's existing photos</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Auto-refresh page every 30 seconds to update session statuses
+setTimeout(function() {
+    location.reload();
+}, 30000);
+</script>
+{% endblock %} 

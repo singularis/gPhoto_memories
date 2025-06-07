@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Downloaded Items{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h3>Downloaded Items</h3>
+            </div>
+            <div class="card-body">
+                {% if downloaded_items %}
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Filename</th>
+                                    <th>User</th>
+                                    <th>Session ID</th>
+                                    <th>Download Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in downloaded_items %}
+                                <tr>
+                                    <td>{{ item.filename }}</td>
+                                    <td>{{ item.user }}</td>
+                                    <td><code>{{ item.session_id[:8] }}...</code></td>
+                                    <td>{{ item.download_time }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="mt-3">
+                        <div class="alert alert-info">
+                            <h5>📁 File Location</h5>
+                            <p>Downloaded files are organized by year in: <code>/app/static/pics/</code></p>
+                            <p>Files are named with the pattern: <code>originalname_username.extension</code></p>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="text-center py-5">
+                        <h5 class="text-muted">No items downloaded yet</h5>
+                        <p class="text-muted">Create a session and select photos to get started.</p>
+                        <a href="{{ url_for('index') }}" class="btn btn-primary">
+                            Create New Session
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="mt-3 text-center">
+            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+                ← Back to Home
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %} 

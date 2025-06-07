@@ -1,11 +1,15 @@
 FROM python:3.9-slim
 
-RUN apt-get update && apt-get install -y vim
-
 WORKDIR /app
 
-COPY . /app
-
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-CMD ["python", "-u", "/app/gphot.py"]
+COPY . .
+
+# Create necessary directories
+RUN mkdir -p /app/static/pics /app/credentials /app/templates
+
+EXPOSE 5000
+
+CMD ["python", "gphoto_picker.py"]

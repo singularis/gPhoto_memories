@@ -5,6 +5,8 @@ import logging
 from flask import Flask, redirect, request, url_for, render_template, Response, send_from_directory, jsonify
 from helpers.middleware import setup_metrics
 import prometheus_client
+from PIL import Image, ImageOps
+import io
 
 
 picFolder = '/photos'
@@ -128,13 +130,76 @@ def get_photos_for_date(selected_date):
 
 @app.route('/photos/<path:filename>')
 def serve_photos(filename):
-    """Serve photos from the /photos directory"""
+    """Serve photos from the /photos directory with optional resizing"""
     logging.debug(f"Serving photo: {filename}")
+    
+    # Get resize parameters from query string
+    width = request.args.get('w', type=int)
+    height = request.args.get('h', type=int)
+    quality = request.args.get('q', 85, type=int)  # Default quality 85%
+    
+    # Auto-detect mobile devices and apply default sizing
+    user_agent = request.headers.get('User-Agent', '').lower()
+    is_mobile = any(device in user_agent for device in ['mobile', 'android', 'iphone', 'ipad', 'ipod'])
+    
+    # Default mobile sizing if no dimensions specified
+    if is_mobile and not width and not height:
+        width = 800  # Max width for mobile devices
+        
     try:
-        return send_from_directory('/photos', filename)
+        file_path = os.path.join('/photos', filename)
+        
+        if not width and not height:
+            return send_from_directory('/photos', filename)
+        
+        if not os.path.exists(file_path):
+            return "Photo not found", 404
+            
+        if not filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.heic')):
+            return send_from_directory('/photos', filename)
+        
+        with Image.open(file_path) as img:
+            # Preserve original orientation using EXIF data
+            img = ImageOps.exif_transpose(img)
+            
+            if filename.lower().endswith('.heic'):
+                img = img.convert('RGB')
+                output_format = 'JPEG'
+                mimetype = 'image/jpeg'
+            else:
+                output_format = img.format if img.format else 'JPEG'
+                mimetype = f'image/{output_format.lower()}'
+            
+            original_width, original_height = img.size
+            
+            if width and height:
+                new_width, new_height = width, height
+            elif width:
+                new_height = int((width / original_width) * original_height)
+                new_width = width
+            elif height:
+                new_width = int((height / original_height) * original_width)
+                new_height = height
+            else:
+                new_width, new_height = original_width, original_height
+            
+            if new_width < original_width or new_height < original_height:
+                img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                logging.debug(f"Resized {filename} from {original_width}x{original_height} to {new_width}x{new_height}")
+            
+            # Save to memory buffer
+            buffer = io.BytesIO()
+            img.save(buffer, format=output_format, quality=quality, optimize=True)
+            buffer.seek(0)
+            
+            return Response(buffer.getvalue(), mimetype=mimetype)
+            
     except Exception as e:
-        logging.error(f"Error serving photo {filename}: {e}")
-        return "Photo not found", 404
+        logging.error(f"Error processing photo {filename}: {e}")
+        try:
+            return send_from_directory('/photos', filename)
+        except:
+            return "Photo not found", 404
 
 @app.route('/metrics/')
 def metrics():

@@ -7,3 +7,4 @@ oauthlib
 pyOpenSSL
 prometheus_client
 werkzeug
+Pillow

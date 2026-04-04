@@ -6,6 +6,7 @@ from flask import Flask, redirect, request, url_for, render_template, Response, 
 from helpers.middleware import setup_metrics
 import prometheus_client
 from PIL import Image, ImageOps
+from pillow_heif import register_heif_opener
 import io
 
 
@@ -18,6 +19,7 @@ app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = picFolder
 app.config['DEBUG'] = True
 setup_metrics(app)
+register_heif_opener()
 
 CONTENT_TYPE_LATEST = str('text/plain; version=0.0.4; charset=utf-8')
 

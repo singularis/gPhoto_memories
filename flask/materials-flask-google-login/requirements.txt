@@ -8,3 +8,4 @@ pyOpenSSL
 prometheus_client
 werkzeug
 Pillow
+pillow-heif

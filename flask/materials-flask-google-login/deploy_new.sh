@@ -1,5 +1,6 @@
 #! /bin/bash
 
-docker build -t singularis314/gphoto:0.4 .
-docker push singularis314/gphoto:0.4
-kubectl rollout restart -n gphoto deployment gphoto-flask-deployment
+docker build -t docker.io/singularis314/gphoto:0.6 .
+docker push docker.io/singularis314/gphoto:0.6
+kubectl set image -n gphoto deployment/gphoto-flask-deployment gphoto-flask=docker.io/singularis314/gphoto:0.6
+kubectl rollout status -n gphoto deployment/gphoto-flask-deployment

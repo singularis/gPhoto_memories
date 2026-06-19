@@ -1,8 +1,9 @@
 # Python standard libraries
 import os
+import hashlib
 from datetime import date, datetime
 import logging
-from flask import Flask, redirect, request, url_for, render_template, Response, send_from_directory, jsonify
+from flask import Flask, request, render_template, Response, send_from_directory, jsonify
 from helpers.middleware import setup_metrics
 import prometheus_client
 from PIL import Image, ImageOps
@@ -11,220 +12,207 @@ import io
 
 
 picFolder = '/photos'
+CACHE_DIR = '/photos/.thumb_cache'
 
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# WARNING only — no debug spam in prod
+logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Flask app setup
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = picFolder
-app.config['DEBUG'] = True
+# DEBUG must be False — Werkzeug reloader + stat polling burned the CPU
+app.config['DEBUG'] = False
 setup_metrics(app)
 register_heif_opener()
 
+# Pre-create thumbnail cache directory (on the mounted volume — survives pod restarts)
+os.makedirs(CACHE_DIR, exist_ok=True)
+
 CONTENT_TYPE_LATEST = str('text/plain; version=0.0.4; charset=utf-8')
+
+IMAGE_EXTS = ('.png', '.jpg', '.jpeg', '.gif', '.heic')
+VIDEO_EXTS = ('.mp4', '.mov', '.avi')
+
+
+def _get_media_for_date(target_date):
+    """Shared logic: scan folders for the given date across up to 10 prior years."""
+    media = {'images': [], 'videos': []}
+    years_found = []
+
+    for years_back in range(1, 11):
+        try:
+            past_date = date(target_date.year - years_back, target_date.month, target_date.day)
+        except ValueError:
+            # Feb 29 on non-leap year
+            continue
+
+        past_folder = past_date.strftime("%Y_%m_%d")
+        past_path = os.path.join(picFolder, past_folder)
+
+        if not (os.path.exists(past_path) and os.path.isdir(past_path)):
+            continue
+
+        years_found.append(past_date.year)
+        try:
+            for file in os.listdir(past_path):
+                file_path = os.path.join('photos', past_folder, file)
+                fl = file.lower()
+                if fl.endswith(IMAGE_EXTS):
+                    media['images'].append({'path': file_path, 'year': past_date.year, 'date': past_date})
+                elif fl.endswith(VIDEO_EXTS):
+                    media['videos'].append({'path': file_path, 'year': past_date.year, 'date': past_date})
+        except Exception as e:
+            logging.error("Error reading %s: %s", past_path, e)
+
+    return media, years_found
+
+
+def _thumb_cache_path(filename, width, height, quality):
+    """Return the cache file path for a given resize request."""
+    key = hashlib.md5(f"{filename}:{width}:{height}:{quality}".encode()).hexdigest()
+    return os.path.join(CACHE_DIR, f"{key}.jpg")
 
 
 @app.route("/")
 @app.route("/date/<selected_date>")
 def index(selected_date=None):
-    logging.debug("Starting index route")
-    media = {'images': [], 'videos': []}
-    years_found = []
-    
-    # If a date is provided, use it; otherwise use today's date
     if selected_date:
         try:
             target_date = datetime.strptime(selected_date, '%Y-%m-%d').date()
         except ValueError:
-            logging.error(f"Invalid date format: {selected_date}")
             target_date = date.today()
     else:
         target_date = date.today()
-    
-    logging.debug(f"Target date: {target_date}")
-    logging.debug(f"Base photo folder: {picFolder}")
-    
-    # Look for this same day in previous years (going back up to 10 years)
-    for years_back in range(1, 11):
-        try:
-            past_date = date(target_date.year - years_back, target_date.month, target_date.day)
-            past_folder = past_date.strftime("%Y_%m_%d")
-            past_path = os.path.join(picFolder, past_folder)
-            
-            logging.debug(f"Checking for folder: {past_folder} ({years_back} years ago)")
-            
-            if os.path.exists(past_path) and os.path.isdir(past_path):
-                logging.debug(f"Found folder for {past_date}: {past_path}")
-                years_found.append(past_date.year)
-                
-                try:
-                    fileList = os.listdir(past_path)
-                    logging.debug(f"Found {len(fileList)} files in {past_folder}")
-                    
-                    for file in fileList:
-                        file_path = os.path.join('photos', past_folder, file)
-                        if file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.heic')):
-                            media['images'].append({'path': file_path, 'year': past_date.year, 'date': past_date})
-                            logging.debug(f"Added image from {past_date.year}: {file_path}")
-                        elif file.lower().endswith(('.mp4', '.mov', '.avi')):
-                            media['videos'].append({'path': file_path, 'year': past_date.year, 'date': past_date})
-                            logging.debug(f"Added video from {past_date.year}: {file_path}")
-                        else:
-                            logging.debug(f"Skipped file (unknown type): {file}")
-                except Exception as e:
-                    logging.error(f"Error reading files from {past_path}: {e}")
-            else:
-                logging.debug(f"No folder found for {past_folder}")
-                
-        except ValueError as e:
-            # Handle leap year issues (Feb 29 on non-leap years)
-            logging.debug(f"Date calculation error for {years_back} years back: {e}")
-            continue
-    
-    logging.debug(f"Years found with photos: {years_found}")
-    logging.debug(f"Final media count - Images: {len(media['images'])}, Videos: {len(media['videos'])}")
-    logging.debug("Rendering template")
-    
-    return render_template("index.html", media=media, date=target_date, years_found=years_found, selected_date=selected_date)
+
+    media, years_found = _get_media_for_date(target_date)
+    return render_template("index.html", media=media, date=target_date,
+                           years_found=years_found, selected_date=selected_date)
+
 
 @app.route('/get_photos/<selected_date>')
 def get_photos_for_date(selected_date):
-    """API endpoint to get photos for a specific date"""
-    logging.debug(f"Getting photos for date: {selected_date}")
+    """API endpoint to get photos for a specific date."""
     try:
         target_date = datetime.strptime(selected_date, '%Y-%m-%d').date()
     except ValueError:
         return jsonify({'error': 'Invalid date format'}), 400
-    
-    media = {'images': [], 'videos': []}
-    years_found = []
-    
-    # Look for this same day in previous years
-    for years_back in range(1, 11):
-        try:
-            past_date = date(target_date.year - years_back, target_date.month, target_date.day)
-            past_folder = past_date.strftime("%Y_%m_%d")
-            past_path = os.path.join(picFolder, past_folder)
-            
-            if os.path.exists(past_path) and os.path.isdir(past_path):
-                years_found.append(past_date.year)
-                
-                try:
-                    fileList = os.listdir(past_path)
-                    for file in fileList:
-                        file_path = os.path.join('photos', past_folder, file)
-                        if file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.heic')):
-                            media['images'].append({'path': file_path, 'year': past_date.year, 'date': past_date.strftime('%Y-%m-%d')})
-                        elif file.lower().endswith(('.mp4', '.mov', '.avi')):
-                            media['videos'].append({'path': file_path, 'year': past_date.year, 'date': past_date.strftime('%Y-%m-%d')})
-                except Exception as e:
-                    logging.error(f"Error reading files from {past_path}: {e}")
-                    
-        except ValueError:
-            continue
-    
+
+    media, years_found = _get_media_for_date(target_date)
+
+    # Dates must be strings for JSON serialisation
+    for img in media['images']:
+        img['date'] = img['date'].strftime('%Y-%m-%d')
+    for vid in media['videos']:
+        vid['date'] = vid['date'].strftime('%Y-%m-%d')
+
     return jsonify({
-        'media': media, 
+        'media': media,
         'years_found': years_found,
         'date': target_date.strftime('%Y-%m-%d'),
         'formatted_date': target_date.strftime('%B %d, %Y')
     })
 
+
 @app.route('/photos/<path:filename>')
 def serve_photos(filename):
-    """Serve photos from the /photos directory with optional resizing"""
-    logging.debug(f"Serving photo: {filename}")
-    
-    # Get resize parameters from query string
-    width = request.args.get('w', type=int)
-    height = request.args.get('h', type=int)
-    quality = request.args.get('q', 85, type=int)  # Default quality 85%
-    
-    # Auto-detect mobile devices and apply default sizing
-    user_agent = request.headers.get('User-Agent', '').lower()
-    is_mobile = any(device in user_agent for device in ['mobile', 'android', 'iphone', 'ipad', 'ipod'])
-    
-    # Default mobile sizing if no dimensions specified
+    """Serve photos with resize + persistent disk thumbnail cache."""
+    width   = request.args.get('w', type=int)
+    height  = request.args.get('h', type=int)
+    quality = request.args.get('q', 85, type=int)
+
+    # Auto-shrink for mobile
+    ua = request.headers.get('User-Agent', '').lower()
+    is_mobile = any(d in ua for d in ('mobile', 'android', 'iphone', 'ipad', 'ipod'))
     if is_mobile and not width and not height:
-        width = 800  # Max width for mobile devices
-        
+        width = 800
+
+    # No resize needed — serve raw file
+    if not width and not height:
+        return send_from_directory('/photos', filename)
+
+    file_path = os.path.join('/photos', filename)
+
+    if not os.path.exists(file_path):
+        return "Photo not found", 404
+
+    fl = filename.lower()
+
+    # Non-image files (videos etc.) — pass through
+    if not fl.endswith(IMAGE_EXTS):
+        return send_from_directory('/photos', filename)
+
+    # ── Thumbnail cache hit ───────────────────────────────────────────────────
+    cache_path = _thumb_cache_path(filename, width, height, quality)
+    if os.path.exists(cache_path):
+        return send_from_directory(CACHE_DIR, os.path.basename(cache_path),
+                                   mimetype='image/jpeg')
+
+    # ── Generate thumbnail ────────────────────────────────────────────────────
     try:
-        file_path = os.path.join('/photos', filename)
-        
-        if not width and not height:
-            return send_from_directory('/photos', filename)
-        
-        if not os.path.exists(file_path):
-            return "Photo not found", 404
-            
-        if not filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.heic')):
-            return send_from_directory('/photos', filename)
-        
         with Image.open(file_path) as img:
-            # Preserve original orientation using EXIF data
-            # exif_transpose may return a new Image — track it for explicit close
+            # exif_transpose may return a *new* image object
             transposed = ImageOps.exif_transpose(img)
             try:
-                if filename.lower().endswith('.heic'):
+                # Normalise everything to RGB/JPEG for the cache
+                if fl.endswith('.heic') or transposed.mode not in ('RGB', 'L'):
                     converted = transposed.convert('RGB')
-                    # Close transposed copy if it differs from the original
                     if transposed is not img:
                         transposed.close()
                     transposed = converted
-                    output_format = 'JPEG'
-                    mimetype = 'image/jpeg'
-                else:
-                    output_format = transposed.format if transposed.format else 'JPEG'
-                    mimetype = f'image/{output_format.lower()}'
 
-                original_width, original_height = transposed.size
+                orig_w, orig_h = transposed.size
 
+                # Compute target dimensions
                 if width and height:
-                    new_width, new_height = width, height
+                    new_w, new_h = width, height
                 elif width:
-                    new_height = int((width / original_width) * original_height)
-                    new_width = width
+                    new_w = width
+                    new_h = int((width / orig_w) * orig_h)
                 elif height:
-                    new_width = int((height / original_height) * original_width)
-                    new_height = height
+                    new_h = height
+                    new_w = int((height / orig_h) * orig_w)
                 else:
-                    new_width, new_height = original_width, original_height
+                    new_w, new_h = orig_w, orig_h
 
-                if new_width < original_width or new_height < original_height:
-                    resized = transposed.resize((new_width, new_height), Image.Resampling.LANCZOS)
-                    transposed.close()
+                if new_w < orig_w or new_h < orig_h:
+                    resized = transposed.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                    if transposed is not img:
+                        transposed.close()
                     transposed = resized
-                    logging.debug(f"Resized {filename} from {original_width}x{original_height} to {new_width}x{new_height}")
 
-                # Save to memory buffer and stream directly — do NOT call getvalue()
-                # which would create a redundant copy of the bytes.
+                # Encode once into memory
                 buffer = io.BytesIO()
-                transposed.save(buffer, format=output_format, quality=quality, optimize=True)
-                buffer.seek(0)
+                transposed.save(buffer, format='JPEG', quality=quality, optimize=True)
+                img_bytes = buffer.getvalue()
 
-                return Response(buffer, mimetype=mimetype, direct_passthrough=True)
+                # Persist to cache (best-effort — ignore write errors)
+                try:
+                    with open(cache_path, 'wb') as cf:
+                        cf.write(img_bytes)
+                except Exception as cache_err:
+                    logging.warning("Thumb cache write failed for %s: %s", filename, cache_err)
+
+                return Response(img_bytes, mimetype='image/jpeg')
+
             finally:
-                # Ensure any intermediate Image copies are freed
                 if transposed is not img:
                     transposed.close()
-            
+
     except Exception as e:
-        logging.error(f"Error processing photo {filename}: {e}")
+        logging.error("Error processing photo %s: %s", filename, e)
         try:
             return send_from_directory('/photos', filename)
-        except:
+        except Exception:
             return "Photo not found", 404
+
 
 @app.route('/metrics/')
 def metrics():
-    logging.debug("Metrics endpoint accessed")
-    metrics_data = prometheus_client.generate_latest()
-    logging.debug(f"Generated metrics data size: {len(metrics_data)} bytes")
-    return Response(metrics_data, mimetype=CONTENT_TYPE_LATEST)
+    return Response(prometheus_client.generate_latest(), mimetype=CONTENT_TYPE_LATEST)
+
 
 if __name__ == "__main__":
-    logging.getLogger().setLevel(logging.DEBUG)
-    logger = logging.getLogger('werkzeug')
-    logger.setLevel(logging.INFO)  # Keep werkzeug at INFO to avoid too much noise
-    logging.debug("Starting Flask app with debug logging enabled")
-    app.run(host="0.0.0.0", debug=True)
+    # This block is only hit in local dev.
+    # Production uses gunicorn (see Dockerfile).
+    logging.getLogger().setLevel(logging.INFO)
+    app.run(host="0.0.0.0", debug=False)

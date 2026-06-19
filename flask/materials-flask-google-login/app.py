@@ -162,39 +162,51 @@ def serve_photos(filename):
         
         with Image.open(file_path) as img:
             # Preserve original orientation using EXIF data
-            img = ImageOps.exif_transpose(img)
-            
-            if filename.lower().endswith('.heic'):
-                img = img.convert('RGB')
-                output_format = 'JPEG'
-                mimetype = 'image/jpeg'
-            else:
-                output_format = img.format if img.format else 'JPEG'
-                mimetype = f'image/{output_format.lower()}'
-            
-            original_width, original_height = img.size
-            
-            if width and height:
-                new_width, new_height = width, height
-            elif width:
-                new_height = int((width / original_width) * original_height)
-                new_width = width
-            elif height:
-                new_width = int((height / original_height) * original_width)
-                new_height = height
-            else:
-                new_width, new_height = original_width, original_height
-            
-            if new_width < original_width or new_height < original_height:
-                img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-                logging.debug(f"Resized {filename} from {original_width}x{original_height} to {new_width}x{new_height}")
-            
-            # Save to memory buffer
-            buffer = io.BytesIO()
-            img.save(buffer, format=output_format, quality=quality, optimize=True)
-            buffer.seek(0)
-            
-            return Response(buffer.getvalue(), mimetype=mimetype)
+            # exif_transpose may return a new Image — track it for explicit close
+            transposed = ImageOps.exif_transpose(img)
+            try:
+                if filename.lower().endswith('.heic'):
+                    converted = transposed.convert('RGB')
+                    # Close transposed copy if it differs from the original
+                    if transposed is not img:
+                        transposed.close()
+                    transposed = converted
+                    output_format = 'JPEG'
+                    mimetype = 'image/jpeg'
+                else:
+                    output_format = transposed.format if transposed.format else 'JPEG'
+                    mimetype = f'image/{output_format.lower()}'
+
+                original_width, original_height = transposed.size
+
+                if width and height:
+                    new_width, new_height = width, height
+                elif width:
+                    new_height = int((width / original_width) * original_height)
+                    new_width = width
+                elif height:
+                    new_width = int((height / original_height) * original_width)
+                    new_height = height
+                else:
+                    new_width, new_height = original_width, original_height
+
+                if new_width < original_width or new_height < original_height:
+                    resized = transposed.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                    transposed.close()
+                    transposed = resized
+                    logging.debug(f"Resized {filename} from {original_width}x{original_height} to {new_width}x{new_height}")
+
+                # Save to memory buffer and stream directly — do NOT call getvalue()
+                # which would create a redundant copy of the bytes.
+                buffer = io.BytesIO()
+                transposed.save(buffer, format=output_format, quality=quality, optimize=True)
+                buffer.seek(0)
+
+                return Response(buffer, mimetype=mimetype, direct_passthrough=True)
+            finally:
+                # Ensure any intermediate Image copies are freed
+                if transposed is not img:
+                    transposed.close()
             
     except Exception as e:
         logging.error(f"Error processing photo {filename}: {e}")

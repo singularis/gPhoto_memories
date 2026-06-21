@@ -35,11 +35,11 @@ VIDEO_EXTS = ('.mp4', '.mov', '.avi')
 
 
 def _get_media_for_date(target_date):
-    """Shared logic: scan folders for the given date across up to 10 prior years."""
+    """Shared logic: scan folders for the given date across up to 100 prior years."""
     media = {'images': [], 'videos': []}
     years_found = []
 
-    for years_back in range(1, 11):
+    for years_back in range(1, 100):
         try:
             past_date = date(target_date.year - years_back, target_date.month, target_date.day)
         except ValueError:

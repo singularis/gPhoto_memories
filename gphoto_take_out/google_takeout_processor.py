@@ -88,7 +88,7 @@ def _save_state(processed: set) -> None:
 # ---------------------------------------------------------------------------
 # Media extensions
 # ---------------------------------------------------------------------------
-IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp", ".heic"}
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp", ".heic", ".heif"}
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".m4v", ".3gp"}
 MEDIA_EXTS = IMAGE_EXTS | VIDEO_EXTS
 
@@ -207,12 +207,15 @@ def get_all_media_files_from_path(search_path: str) -> list:
                 continue
             file_path = os.path.join(root, file)
 
-            # Try .supplemental-metadata.json first, then plain .json sidecar
+            # Try .supplemental-metadata.json first, then exact .ext.json, then plain .json sidecar
             supplemental = file_path + ".supplemental-metadata.json"
+            exact_json   = file_path + ".json"
             base_json    = os.path.splitext(file_path)[0] + ".json"
 
             if os.path.exists(supplemental):
                 media_files.append((file_path, supplemental))
+            elif os.path.exists(exact_json):
+                media_files.append((file_path, exact_json))
             elif os.path.exists(base_json):
                 media_files.append((file_path, base_json))
             else:

@@ -30,8 +30,8 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 
 CONTENT_TYPE_LATEST = str('text/plain; version=0.0.4; charset=utf-8')
 
-IMAGE_EXTS = ('.png', '.jpg', '.jpeg', '.gif', '.heic')
-VIDEO_EXTS = ('.mp4', '.mov', '.avi')
+IMAGE_EXTS = ('.png', '.jpg', '.jpeg', '.gif', '.heic', '.heif', '.bmp', '.tiff', '.webp')
+VIDEO_EXTS = ('.mp4', '.mov', '.avi', '.mkv', '.m4v', '.3gp')
 
 
 def _get_media_for_date(target_date):

@@ -55,15 +55,15 @@
             <div class="media-grid">
                 {% for image in media['images'] %}
                     {% if image.year == year %}
-                    <img src="/{{ image.path }}?w=400&q=75" alt="Image from {{ year }}" onclick="toggleFullscreen('/{{ image.path }}')">
+                    <img src="/{{ image.path }}?w=200&q=60" alt="Image from {{ year }}" loading="lazy" onclick="toggleFullscreen('/{{ image.path }}')">
                     {% endif %}
                 {% endfor %}
                 {% for video in media['videos'] %}
                     {% if video.year == year %}
-                    <video id="video{{ year }}_{{ loop.index }}" controls onclick="playVideo('video{{ year }}_{{ loop.index }}')">
-                        <source src="/{{ video.path }}" type="video/mp4">
-                        Your browser does not support the video tag.
-                    </video>
+                    <div class="video-placeholder" onclick="loadVideo(this, '/{{ video.path }}')">
+                        <div class="play-icon"></div>
+                        <span class="video-label">▶ Video</span>
+                    </div>
                     {% endif %}
                 {% endfor %}
             </div>
@@ -231,18 +231,17 @@
                 // Add images for this year
                 data.media.images.forEach(image => {
                     if (image.year === year) {
-                        html += `<img src="/${image.path}?w=400&q=75" alt="Image from ${year}" onclick="toggleFullscreen('/${image.path}')">`;
+                        html += `<img src="/${image.path}?w=200&q=60" alt="Image from ${year}" loading="lazy" onclick="toggleFullscreen('/${image.path}')">`;
                     }
                 });
                 
                 // Add videos for this year
                 data.media.videos.forEach((video, index) => {
                     if (video.year === year) {
-                        const videoId = `video${year}_${index}`;
-                        html += `<video id="${videoId}" controls onclick="playVideo('${videoId}')">
-                            <source src="/${video.path}" type="video/mp4">
-                            Your browser does not support the video tag.
-                        </video>`;
+                        html += `<div class="video-placeholder" onclick="loadVideo(this, '/${video.path}')">
+                            <div class="play-icon"></div>
+                            <span class="video-label">▶ Video</span>
+                        </div>`;
                     }
                 });
                 
@@ -259,23 +258,20 @@
         }
     }
 
-    // Existing functions
-    function playVideo(videoId) {
-        var video = document.getElementById(videoId);
-
-        // Check if the video is already playing
-        if (video.paused) {
-            video.play().then(() => {
-                // Video is now playing
-            }).catch((error) => {
-                console.error("Error attempting to play the video:", error);
-                // Handle the error here. For example, you can try playing the video again
-                // or provide some feedback to the user.
-            });
-        } else {
-            // If the video is playing, pause it
-            video.pause();
-        }
+    // Load video on demand — no data fetched until user clicks
+    function loadVideo(placeholder, videoSrc) {
+        var video = document.createElement('video');
+        video.controls = true;
+        video.autoplay = true;
+        video.style.width = '100%';
+        video.style.maxWidth = '400px';
+        video.style.maxHeight = '400px';
+        video.style.borderRadius = '8px';
+        var source = document.createElement('source');
+        source.src = videoSrc;
+        source.type = 'video/mp4';
+        video.appendChild(source);
+        placeholder.replaceWith(video);
     }
     
     function toggleFullscreen(imageSrc) {

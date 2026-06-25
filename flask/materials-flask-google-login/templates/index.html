@@ -3,304 +3,245 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Memories — On This Day</title>
-    <meta name="description" content="Your personal photo memories from this day in previous years">
+    <title>Memories</title>
+    <meta name="description" content="Your photo memories from this day in previous years">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles/main.css') }}">
-    <link rel="icon" type="image/svg+xml" href="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Photos_icon_%282020%29.svg"/>
+    <link rel="icon" type="image/svg+xml" href="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Photos_icon_%282020%29.svg">
 </head>
 <body>
 
-<!-- ─── Header ────────────────────────────────────────────── -->
-<header class="app-header">
-    <div class="header-inner">
-        <div class="header-left">
-            <div class="app-icon"></div>
-            <div>
-                <div class="header-title">Memories</div>
-                <div class="header-subtitle">On This Day</div>
-            </div>
+<!-- ═══ TOP BAR ════════════════════════════════════════════ -->
+<nav class="topbar">
+    <div class="topbar-brand">
+        <div class="brand-logo"></div>
+        <span class="brand-name">Memories</span>
+    </div>
+    <button class="topbar-date-btn" onclick="openCal()">
+        📅 <span id="btnDate">{{ date.strftime('%B %d') }}</span>
+    </button>
+</nav>
+
+<!-- ═══ HERO ═══════════════════════════════════════════════ -->
+<div class="hero">
+    <h1 class="hero-date" id="heroDate">{{ date.strftime('%B %d') }}</h1>
+    <p class="hero-sub" id="heroSub">{{ media['images']|length }} photos · {{ media['videos']|length }} videos · {{ years_found|length }} years of memories</p>
+</div>
+
+<!-- ═══ MEDIA ══════════════════════════════════════════════ -->
+<div id="feed">
+{% if years_found %}
+    {% for year in years_found|sort|reverse %}
+    <div class="year-group">
+        <div class="year-divider">
+            <span class="year-divider-label">{{ year }}</span>
+            <span class="year-divider-ago">{{ date.year - year }} {{ 'year' if date.year - year == 1 else 'years' }} ago</span>
+            <div class="year-divider-line"></div>
         </div>
-        <button class="calendar-btn" id="calendarBtn" onclick="openCalendar()">
-            📅 {{ date.strftime('%B %d') }}
-        </button>
-    </div>
-</header>
-
-<!-- ─── Main Content ──────────────────────────────────────── -->
-<main class="main-content">
-    <div class="page-info">
-        <h1 class="page-date">{{ date.strftime('%B %d') }}</h1>
-        <p class="page-stats" id="pageStats">
-            {{ media['images']|length }} photos · {{ media['videos']|length }} videos · {{ years_found|length }} years
-        </p>
-    </div>
-
-    <div id="mediaContainer">
-        {% if years_found %}
-            {% for year in years_found|sort|reverse %}
-            <section class="year-section">
-                <div class="year-header">
-                    <span class="year-label">{{ year }}</span>
-                    <span class="year-ago">{{ date.year - year }} {{ 'year' if date.year - year == 1 else 'years' }} ago</span>
-                </div>
-                <div class="media-grid">
-                    {% for image in media['images'] %}
-                        {% if image.year == year %}
-                        <img src="/{{ image.path }}?w=200&q=60"
-                             alt="Photo from {{ year }}"
-                             loading="lazy"
-                             onclick="openLightbox('/{{ image.path }}')">
-                        {% endif %}
-                    {% endfor %}
-                    {% for video in media['videos'] %}
-                        {% if video.year == year %}
-                        <div class="video-placeholder" onclick="loadVideo(this, '/{{ video.path }}')">
-                            <div class="play-icon"></div>
-                            <span class="video-label">▶ Video</span>
-                        </div>
-                        {% endif %}
-                    {% endfor %}
-                </div>
-            </section>
+        <div class="grid">
+            {% for img in media['images'] if img.year == year %}
+            <div class="grid-item" onclick="openLB('/{{ img.path }}')">
+                <img src="/{{ img.path }}?w=200&q=60" alt="" loading="lazy">
+            </div>
             {% endfor %}
-        {% else %}
-            <div class="empty-state">
-                <div class="empty-icon">📷</div>
-                <h2>No memories for this day</h2>
-                <p>No photos or videos found for {{ date.strftime('%B %d') }} in previous years.</p>
+            {% for vid in media['videos'] if vid.year == year %}
+            <div class="vid-card" onclick="playVid(this,'/{{ vid.path }}')">
+                <div class="vid-play"></div>
+                <span class="vid-badge">VIDEO</span>
             </div>
-        {% endif %}
-    </div>
-</main>
-
-<!-- ─── Lightbox ──────────────────────────────────────────── -->
-<div id="lightbox" class="lightbox" onclick="closeLightbox(event)">
-    <button class="lightbox-close" onclick="closeLightbox(event)">✕</button>
-    <img src="" alt="Full size photo">
-</div>
-
-<!-- ─── Calendar Modal ────────────────────────────────────── -->
-<div id="calendarModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h2>Choose a Date</h2>
-            <span class="close" onclick="closeCalendar()">&times;</span>
-        </div>
-        <div class="calendar-container">
-            <div class="calendar-navigation">
-                <button onclick="previousMonth()">&lt;</button>
-                <span id="currentMonth"></span>
-                <button onclick="nextMonth()">&gt;</button>
-            </div>
-            <div class="calendar-grid" id="calendarGrid"></div>
-        </div>
-        <div class="modal-footer">
-            <button class="btn-cancel" onclick="closeCalendar()">Cancel</button>
-            <button class="btn-today" onclick="selectToday()">Today</button>
+            {% endfor %}
         </div>
     </div>
+    {% endfor %}
+{% else %}
+    <div class="empty">
+        <div class="empty-icon">📷</div>
+        <h2>No memories for this day</h2>
+        <p>No photos or videos from {{ date.strftime('%B %d') }} in previous years</p>
+    </div>
+{% endif %}
 </div>
 
-<!-- ─── Loading Overlay ───────────────────────────────────── -->
-<div id="loadingOverlay" class="loading-overlay">
-    <div class="loader"></div>
+<!-- ═══ LIGHTBOX ═══════════════════════════════════════════ -->
+<div class="lb" id="lb" onclick="closeLB(event)">
+    <button class="lb-x" onclick="closeLB(event)">✕</button>
+    <img src="" alt="">
+</div>
+
+<!-- ═══ CALENDAR MODAL ════════════════════════════════════= -->
+<div class="modal-bg" id="calModal">
+    <div class="modal-card">
+        <div class="modal-top">
+            <h2>Choose a date</h2>
+            <span class="modal-close" onclick="closeCal()">&times;</span>
+        </div>
+        <div class="cal-body">
+            <div class="cal-nav">
+                <button onclick="navMonth(-1)">&lsaquo;</button>
+                <span id="calTitle"></span>
+                <button onclick="navMonth(1)">&rsaquo;</button>
+            </div>
+            <div class="cal-grid" id="calGrid"></div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn-ghost" onclick="closeCal()">Cancel</button>
+            <button class="btn-fill" onclick="pickToday()">Today</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ LOADING ════════════════════════════════════════════ -->
+<div class="loading-scrim" id="loadScrim">
+    <div class="spinner"></div>
     <p>Loading memories…</p>
 </div>
 
 <script>
-    let currentDate = new Date();
+/* ─── state ─────────────────────────────────────────────── */
+let calDate = new Date();
+const MONTHS = ['January','February','March','April','May','June',
+                'July','August','September','October','November','December'];
 
-    // ── Calendar ──────────────────────────────────────────────
-    function openCalendar() {
-        document.getElementById('calendarModal').style.display = 'block';
-        generateCalendar();
+/* ─── lightbox ──────────────────────────────────────────── */
+function openLB(src) {
+    const lb = document.getElementById('lb');
+    lb.querySelector('img').src = src;
+    lb.classList.add('open');
+    document.body.style.overflow = 'hidden';
+}
+function closeLB(e) {
+    if (e && e.target.tagName === 'IMG') return;
+    document.getElementById('lb').classList.remove('open');
+    document.body.style.overflow = '';
+}
+
+/* ─── video on-demand ───────────────────────────────────── */
+function playVid(el, src) {
+    const v = document.createElement('video');
+    v.controls = true; v.autoplay = true;
+    const s = document.createElement('source');
+    s.src = src; s.type = 'video/mp4';
+    v.appendChild(s);
+    el.replaceWith(v);
+}
+
+/* ─── calendar ──────────────────────────────────────────── */
+function openCal() {
+    const m = document.getElementById('calModal');
+    m.style.display = 'block';
+    requestAnimationFrame(() => m.classList.add('open'));
+    buildCal();
+}
+function closeCal() {
+    const m = document.getElementById('calModal');
+    m.classList.remove('open');
+    setTimeout(() => m.style.display = 'none', 200);
+}
+function navMonth(d) { calDate.setMonth(calDate.getMonth() + d); buildCal(); }
+
+function buildCal() {
+    document.getElementById('calTitle').textContent =
+        MONTHS[calDate.getMonth()] + ' ' + calDate.getFullYear();
+
+    const g = document.getElementById('calGrid');
+    g.innerHTML = '';
+
+    ['S','M','T','W','T','F','S'].forEach(d => {
+        const h = document.createElement('div');
+        h.className = 'cal-hdr'; h.textContent = d; g.appendChild(h);
+    });
+
+    const first = new Date(calDate.getFullYear(), calDate.getMonth(), 1).getDay();
+    const days  = new Date(calDate.getFullYear(), calDate.getMonth()+1, 0).getDate();
+    const today = new Date();
+
+    for (let i = 0; i < first; i++) {
+        const e = document.createElement('div');
+        e.className = 'cal-day empty'; g.appendChild(e);
+    }
+    for (let d = 1; d <= days; d++) {
+        const e = document.createElement('div');
+        e.className = 'cal-day'; e.textContent = d;
+        if (calDate.getFullYear() === today.getFullYear() &&
+            calDate.getMonth() === today.getMonth() && d === today.getDate())
+            e.classList.add('today');
+        e.onclick = () => pickDay(d);
+        g.appendChild(e);
+    }
+}
+
+function pickDay(d) {
+    const ds = `${calDate.getFullYear()}-${String(calDate.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    closeCal(); loadDate(ds);
+}
+function pickToday() {
+    const t = new Date();
+    const ds = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
+    closeCal(); loadDate(ds);
+}
+
+/* ─── fetch + render ────────────────────────────────────── */
+function loadDate(ds) {
+    document.getElementById('loadScrim').style.display = 'flex';
+    history.pushState({}, '', '/date/' + ds);
+
+    fetch('/get_photos/' + ds).then(r => r.json()).then(data => {
+        render(data);
+        document.getElementById('loadScrim').style.display = 'none';
+    }).catch(() => {
+        document.getElementById('loadScrim').style.display = 'none';
+    });
+}
+
+function render(data) {
+    const [y,m,d] = data.date.split('-');
+    const dt = new Date(+y, +m-1, +d);
+    const nice = dt.toLocaleDateString('en-US', {month:'long', day:'numeric'});
+
+    document.getElementById('heroDate').textContent = nice;
+    document.getElementById('btnDate').textContent = nice;
+    document.getElementById('heroSub').textContent =
+        data.media.images.length + ' photos · ' + data.media.videos.length +
+        ' videos · ' + data.years_found.length + ' years of memories';
+
+    const feed = document.getElementById('feed');
+    if (!data.years_found.length) {
+        feed.innerHTML = `<div class="empty"><div class="empty-icon">📷</div>
+            <h2>No memories for this day</h2>
+            <p>No photos or videos from ${data.formatted_date} in previous years</p></div>`;
+        return;
     }
 
-    function closeCalendar() {
-        document.getElementById('calendarModal').style.display = 'none';
-    }
+    const now = new Date().getFullYear();
+    let html = '';
+    data.years_found.sort((a,b) => b-a).forEach(yr => {
+        const ago = now - yr;
+        html += `<div class="year-group">
+            <div class="year-divider">
+                <span class="year-divider-label">${yr}</span>
+                <span class="year-divider-ago">${ago === 1 ? '1 year ago' : ago + ' years ago'}</span>
+                <div class="year-divider-line"></div>
+            </div><div class="grid">`;
 
-    function generateCalendar() {
-        const monthNames = ["January", "February", "March", "April", "May", "June",
-            "July", "August", "September", "October", "November", "December"];
-
-        const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
-        const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();
-
-        document.getElementById('currentMonth').textContent =
-            monthNames[currentDate.getMonth()] + ' ' + currentDate.getFullYear();
-
-        const grid = document.getElementById('calendarGrid');
-        grid.innerHTML = '';
-
-        const dayHeaders = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        dayHeaders.forEach(day => {
-            const el = document.createElement('div');
-            el.className = 'calendar-day-header';
-            el.textContent = day;
-            grid.appendChild(el);
+        data.media.images.filter(i => i.year === yr).forEach(i => {
+            html += `<div class="grid-item" onclick="openLB('/${i.path}')">
+                <img src="/${i.path}?w=200&q=60" alt="" loading="lazy"></div>`;
         });
-
-        for (let i = 0; i < firstDay; i++) {
-            const el = document.createElement('div');
-            el.className = 'calendar-day empty';
-            grid.appendChild(el);
-        }
-
-        const today = new Date();
-        for (let day = 1; day <= daysInMonth; day++) {
-            const el = document.createElement('div');
-            el.className = 'calendar-day';
-            el.textContent = day;
-            el.onclick = () => selectDate(day);
-
-            if (currentDate.getFullYear() === today.getFullYear() &&
-                currentDate.getMonth() === today.getMonth() &&
-                day === today.getDate()) {
-                el.classList.add('today');
-            }
-            grid.appendChild(el);
-        }
-    }
-
-    function previousMonth() {
-        currentDate.setMonth(currentDate.getMonth() - 1);
-        generateCalendar();
-    }
-
-    function nextMonth() {
-        currentDate.setMonth(currentDate.getMonth() + 1);
-        generateCalendar();
-    }
-
-    function selectDate(day) {
-        const y = currentDate.getFullYear();
-        const m = String(currentDate.getMonth() + 1).padStart(2, '0');
-        const d = String(day).padStart(2, '0');
-        closeCalendar();
-        loadPhotosForDate(`${y}-${m}-${d}`);
-    }
-
-    function selectToday() {
-        const t = new Date();
-        const y = t.getFullYear();
-        const m = String(t.getMonth() + 1).padStart(2, '0');
-        const d = String(t.getDate()).padStart(2, '0');
-        closeCalendar();
-        loadPhotosForDate(`${y}-${m}-${d}`);
-    }
-
-    // ── Load Photos via API ───────────────────────────────────
-    function loadPhotosForDate(dateString) {
-        document.getElementById('loadingOverlay').style.display = 'flex';
-        window.history.pushState({}, '', '/date/' + dateString);
-
-        fetch('/get_photos/' + dateString)
-            .then(r => r.json())
-            .then(data => {
-                updateDisplay(data);
-                document.getElementById('loadingOverlay').style.display = 'none';
-            })
-            .catch(err => {
-                console.error('Error:', err);
-                document.getElementById('loadingOverlay').style.display = 'none';
-            });
-    }
-
-    function updateDisplay(data) {
-        const [y, m, d] = data.date.split('-');
-        const dt = new Date(Number(y), Number(m) - 1, Number(d));
-        const formatted = dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
-
-        document.querySelector('.page-date').textContent = formatted;
-        document.querySelector('.calendar-btn').innerHTML = '📅 ' + formatted;
-        document.getElementById('pageStats').textContent =
-            data.media.images.length + ' photos · ' + data.media.videos.length +
-            ' videos · ' + data.years_found.length + ' years';
-
-        const container = document.getElementById('mediaContainer');
-
-        if (data.years_found.length > 0) {
-            const currentYear = new Date().getFullYear();
-            let html = '';
-            data.years_found.sort((a, b) => b - a).forEach(year => {
-                const ago = currentYear - year;
-                const agoText = ago === 1 ? '1 year ago' : ago + ' years ago';
-                html += `<section class="year-section">
-                    <div class="year-header">
-                        <span class="year-label">${year}</span>
-                        <span class="year-ago">${agoText}</span>
-                    </div>
-                    <div class="media-grid">`;
-
-                data.media.images.forEach(img => {
-                    if (img.year === year) {
-                        html += `<img src="/${img.path}?w=200&q=60" alt="Photo from ${year}" loading="lazy" onclick="openLightbox('/${img.path}')">`;
-                    }
-                });
-
-                data.media.videos.forEach(vid => {
-                    if (vid.year === year) {
-                        html += `<div class="video-placeholder" onclick="loadVideo(this, '/${vid.path}')">
-                            <div class="play-icon"></div>
-                            <span class="video-label">▶ Video</span>
-                        </div>`;
-                    }
-                });
-
-                html += '</div></section>';
-            });
-            container.innerHTML = html;
-        } else {
-            container.innerHTML = `<div class="empty-state">
-                <div class="empty-icon">📷</div>
-                <h2>No memories for this day</h2>
-                <p>No photos or videos found for ${data.formatted_date} in previous years.</p>
-            </div>`;
-        }
-    }
-
-    // ── Lightbox ──────────────────────────────────────────────
-    function openLightbox(src) {
-        const lb = document.getElementById('lightbox');
-        lb.querySelector('img').src = src;
-        lb.classList.add('active');
-        document.body.style.overflow = 'hidden';
-    }
-
-    function closeLightbox(e) {
-        if (e && e.target.tagName === 'IMG') return; // don't close when clicking image
-        const lb = document.getElementById('lightbox');
-        lb.classList.remove('active');
-        document.body.style.overflow = '';
-    }
-
-    // ── Video On-Demand ───────────────────────────────────────
-    function loadVideo(placeholder, src) {
-        const video = document.createElement('video');
-        video.controls = true;
-        video.autoplay = true;
-        const source = document.createElement('source');
-        source.src = src;
-        source.type = 'video/mp4';
-        video.appendChild(source);
-        placeholder.replaceWith(video);
-    }
-
-    // ── Keyboard shortcuts ────────────────────────────────────
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            closeLightbox(e);
-            closeCalendar();
-        }
+        data.media.videos.filter(v => v.year === yr).forEach(v => {
+            html += `<div class="vid-card" onclick="playVid(this,'/${v.path}')">
+                <div class="vid-play"></div><span class="vid-badge">VIDEO</span></div>`;
+        });
+        html += '</div></div>';
     });
+    feed.innerHTML = html;
+}
 
-    // Close modal on backdrop click
-    window.addEventListener('click', function(e) {
-        if (e.target === document.getElementById('calendarModal')) {
-            closeCalendar();
-        }
-    });
+/* ─── keyboard ──────────────────────────────────────────── */
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { closeLB(e); closeCal(); }
+});
+window.addEventListener('click', e => {
+    if (e.target === document.getElementById('calModal')) closeCal();
+});
 </script>
 </body>
 </html>

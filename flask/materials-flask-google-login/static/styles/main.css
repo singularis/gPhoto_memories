@@ -5,6 +5,7 @@
    One consistent warm surface — like flipping through a photo album
    ═══════════════════════════════════════════════════════════ */
 :root {
+    --scale:        2.0;
     --bg:           #f5f2ed;
     --surface:      #f5f2ed;
     --card:         #ffffff;
@@ -155,8 +156,8 @@ body { min-height: 100vh; background: var(--bg); }
    ═══════════════════════════════════════════════════════════ */
 .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 6px;
+    grid-template-columns: repeat(auto-fill, minmax(calc(200px * var(--scale)), 1fr));
+    gap: 8px;
     border-radius: var(--radius);
     overflow: hidden;
 }
@@ -171,7 +172,7 @@ body { min-height: 100vh; background: var(--bg); }
 
 .grid-item img {
     display: block;
-    width: 100%; height: 210px;
+    width: 100%; height: calc(210px * var(--scale));
     object-fit: cover;
     transition: transform .4s cubic-bezier(.25,.46,.45,.94),
                 filter .4s ease,
@@ -220,7 +221,7 @@ body { min-height: 100vh; background: var(--bg); }
     background: var(--text);
     border-radius: 8px;
     display: flex; align-items: center; justify-content: center;
-    height: 210px;
+    height: calc(210px * var(--scale));
     transition: background var(--transition);
 }
 .vid-card:hover { background: #4a3f33; }
@@ -255,9 +256,10 @@ body { min-height: 100vh; background: var(--bg); }
 
 .grid video {
     display: block;
-    width: 100%; height: 210px;
+    width: 100%; height: calc(210px * var(--scale));
     object-fit: cover;
     border-radius: 8px;
+    background: #000;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -486,7 +488,7 @@ body { -ms-overflow-style: none; scrollbar-width: none; }
 
 /* Tablet */
 @media (max-width: 900px) {
-    .grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+    .grid { grid-template-columns: repeat(auto-fill, minmax(calc(160px * var(--scale)), 1fr)); }
     .hero { padding: 28px 20px 4px; }
     .year-group { padding: 0 20px 24px; }
     .hero-date { font-size: 24px; }
@@ -530,13 +532,13 @@ body { -ms-overflow-style: none; scrollbar-width: none; }
     .year-divider-ago   { font-size: 12px; }
 
     .grid {
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(auto-fill, minmax(calc(120px * var(--scale)), 1fr));
         gap: 2px;
         border-radius: 6px;
     }
 
     .grid-item img, .vid-card, .grid video {
-        height: 120px;
+        height: calc(120px * var(--scale));
     }
 
     .grid-item { border-radius: 3px; }
@@ -588,9 +590,9 @@ body { -ms-overflow-style: none; scrollbar-width: none; }
 /* Small phones (iPhone SE, etc) */
 @media (max-width: 380px) {
     .grid {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(auto-fill, minmax(calc(150px * var(--scale)), 1fr));
     }
-    .grid-item img, .vid-card, .grid video { height: 155px; }
+    .grid-item img, .vid-card, .grid video { height: calc(155px * var(--scale)); }
 
     .topbar-brand { gap: 8px; }
     .brand-name { font-size: 14px; }

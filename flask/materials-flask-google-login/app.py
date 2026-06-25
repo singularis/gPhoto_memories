@@ -9,7 +9,7 @@ import prometheus_client
 from PIL import Image, ImageOps
 from pillow_heif import register_heif_opener
 import io
-
+import json
 
 picFolder = '/photos'
 CACHE_DIR = '/photos/.thumb_cache'
@@ -228,6 +228,18 @@ def rotate_photo(filename):
         return jsonify({'status': 'success'})
     except Exception as e:
         logging.error("Rotate error: %s", e)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/settings', methods=['POST'])
+def save_settings():
+    try:
+        data = request.json
+        with open(os.path.join('/photos', 'settings.json'), 'w') as f:
+            json.dump(data, f)
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        logging.error("Settings save error: %s", e)
         return jsonify({'error': str(e)}), 500
 
 

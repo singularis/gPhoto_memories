@@ -1,0 +1,140 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gphoto-flask-deployment
+  namespace: gphoto
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gphoto-flask
+  template:
+    metadata:
+      labels:
+        app: gphoto-flask
+      annotations:
+        co.elastic.logs/enabled: "true"
+    spec:
+      containers:
+        - name: gphoto-flask
+          image: singularis314/gphoto:0.8
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5000
+              name: gphoto-flask
+          volumeMounts:
+            - name: gphoto-pvc
+              mountPath: /app/static/
+            - name: google-photos-pvc
+              mountPath: /photos
+      volumes:
+        - name: gphoto-pvc
+          persistentVolumeClaim:
+            claimName: gphoto-pvc
+        - name: google-photos-pvc
+          persistentVolumeClaim:
+            claimName: google-photos-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gphoto-metal-ln
+  namespace: gphoto
+spec:
+  ports:
+  - port: 5000
+    targetPort: 5000
+    nodePort: 30500
+    name: gphoto-flask
+  selector:
+    app: gphoto-flask
+  type: NodePort
+---
+# Prometheus LB
+apiVersion: v1
+kind: Service
+metadata:
+  name: gphoto-promethues
+  namespace: gphoto
+  labels:
+    app: gphoto-flask
+spec:
+  ports:
+    - port: 5000
+      name: gphoto-flask
+  selector:
+    app: gphoto-flask
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: gphoto-pv
+  namespace: gphoto
+spec:
+  capacity:
+    storage: 5Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Recycle
+  storageClassName: local-storage
+  local:
+    path: /other_hdd/gphoto
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - "racoon"
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: google-photos-pv
+  namespace: gphoto
+spec:
+  capacity:
+    storage: 500Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Recycle
+  storageClassName: local-storage
+  local:
+    path: /other_hdd/google_phots_all_take_for_processing/
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - "racoon"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gphoto-pvc
+  namespace: gphoto
+spec:
+  storageClassName: local-storage
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: google-photos-pvc
+  namespace: gphoto
+spec:
+  storageClassName: local-storage
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 500Gi

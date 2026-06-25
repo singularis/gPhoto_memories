@@ -2,23 +2,30 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1">
     <title>Memories</title>
     <meta name="description" content="Your photo memories from this day in previous years">
+    <meta name="theme-color" content="#f5f2ed">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='brand.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles/main.css') }}">
-    <link rel="icon" type="image/svg+xml" href="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Photos_icon_%282020%29.svg">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='brand.png') }}">
 </head>
 <body>
 
 <!-- ═══ TOP BAR ════════════════════════════════════════════ -->
 <nav class="topbar">
     <div class="topbar-brand">
-        <div class="brand-logo"></div>
+        <img class="brand-logo" src="{{ url_for('static', filename='brand.png') }}" alt="">
         <span class="brand-name">Memories</span>
     </div>
-    <button class="topbar-date-btn" onclick="openCal()">
-        📅 <span id="btnDate">{{ date.strftime('%B %d') }}</span>
-    </button>
+    <div style="display:flex;align-items:center;gap:8px;">
+        <button class="topbar-today-btn" onclick="goToday()">Today</button>
+        <button class="topbar-date-btn" onclick="openCal()">
+            📅 <span id="btnDate">{{ date.strftime('%B %d') }}</span>
+        </button>
+    </div>
 </nav>
 
 <!-- ═══ HERO ═══════════════════════════════════════════════ -->
@@ -80,7 +87,14 @@
                 <span id="calTitle"></span>
                 <button onclick="navMonth(1)">&rsaquo;</button>
             </div>
-            <div class="cal-grid" id="calGrid"></div>
+            <table class="cal-table" id="calTable">
+                <thead>
+                    <tr>
+                        <th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th>
+                    </tr>
+                </thead>
+                <tbody id="calBody"></tbody>
+            </table>
         </div>
         <div class="modal-foot">
             <button class="btn-ghost" onclick="closeCal()">Cancel</button>
@@ -102,15 +116,30 @@ const MONTHS = ['January','February','March','April','May','June',
                 'July','August','September','October','November','December'];
 
 /* ─── lightbox ──────────────────────────────────────────── */
+function goToday() {
+    const t = new Date();
+    const ds = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
+    loadDate(ds);
+}
 function openLB(src) {
     const lb = document.getElementById('lb');
     lb.querySelector('img').src = src;
-    lb.classList.add('open');
+    lb.style.display = 'flex';
+    // Trigger animation on next frame so display:flex is applied first
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => lb.classList.add('open'));
+    });
     document.body.style.overflow = 'hidden';
 }
 function closeLB(e) {
     if (e && e.target.tagName === 'IMG') return;
-    document.getElementById('lb').classList.remove('open');
+    const lb = document.getElementById('lb');
+    lb.classList.remove('open');
+    // Wait for fade-out transition to finish before hiding
+    setTimeout(() => {
+        lb.style.display = 'none';
+        lb.querySelector('img').src = '';
+    }, 350);
     document.body.style.overflow = '';
 }
 
@@ -142,30 +171,41 @@ function buildCal() {
     document.getElementById('calTitle').textContent =
         MONTHS[calDate.getMonth()] + ' ' + calDate.getFullYear();
 
-    const g = document.getElementById('calGrid');
-    g.innerHTML = '';
+    const tbody = document.getElementById('calBody');
+    tbody.innerHTML = '';
 
-    ['S','M','T','W','T','F','S'].forEach(d => {
-        const h = document.createElement('div');
-        h.className = 'cal-hdr'; h.textContent = d; g.appendChild(h);
-    });
-
-    const first = new Date(calDate.getFullYear(), calDate.getMonth(), 1).getDay();
-    const days  = new Date(calDate.getFullYear(), calDate.getMonth()+1, 0).getDate();
+    const firstDay = new Date(calDate.getFullYear(), calDate.getMonth(), 1).getDay();
+    const totalDays = new Date(calDate.getFullYear(), calDate.getMonth()+1, 0).getDate();
     const today = new Date();
 
-    for (let i = 0; i < first; i++) {
-        const e = document.createElement('div');
-        e.className = 'cal-day empty'; g.appendChild(e);
-    }
-    for (let d = 1; d <= days; d++) {
-        const e = document.createElement('div');
-        e.className = 'cal-day'; e.textContent = d;
-        if (calDate.getFullYear() === today.getFullYear() &&
-            calDate.getMonth() === today.getMonth() && d === today.getDate())
-            e.classList.add('today');
-        e.onclick = () => pickDay(d);
-        g.appendChild(e);
+    let dayNum = 1;
+    // Build 6 rows max (covers all months)
+    for (let row = 0; row < 6; row++) {
+        if (dayNum > totalDays) break;
+        const tr = document.createElement('tr');
+        for (let col = 0; col < 7; col++) {
+            const td = document.createElement('td');
+            if (row === 0 && col < firstDay) {
+                // Empty cell before first day
+                td.className = 'cal-empty';
+            } else if (dayNum > totalDays) {
+                // Empty cell after last day
+                td.className = 'cal-empty';
+            } else {
+                td.textContent = dayNum;
+                td.className = 'cal-day';
+                if (calDate.getFullYear() === today.getFullYear() &&
+                    calDate.getMonth() === today.getMonth() &&
+                    dayNum === today.getDate()) {
+                    td.classList.add('today');
+                }
+                const d = dayNum;
+                td.onclick = () => pickDay(d);
+                dayNum++;
+            }
+            tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
     }
 }
 

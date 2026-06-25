@@ -1,0 +1,17 @@
+---
+- name: Deploy Kubernetes configuration files
+  hosts: localhost  # This playbook runs on the Ansible control node
+  tasks:
+    - name: Deploy gphoto_downloader.yaml
+      k8s:
+        definition: "{{ lookup('file', './gphoto_downloader.yaml') }}"
+        state: present
+      register: gphoto_downloader_result
+      when: gphoto_downloader_result is changed
+
+    - name: Deploy gphoto_ui.yaml
+      k8s:
+        definition: "{{ lookup('file', './gphoto_ui.yaml') }}"
+        state: present
+      register: gphoto_ui_result
+      when: gphoto_ui_result is changed

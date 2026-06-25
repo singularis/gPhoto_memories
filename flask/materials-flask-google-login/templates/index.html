@@ -49,7 +49,7 @@
         <div class="grid">
             {% for img in media['images'] if img.year == year %}
             <div class="grid-item">
-                <img src="/{{ img.path }}?w={{ img_w }}&q={{ img_q }}" data-fullsrc="/{{ img.path }}" alt="" loading="lazy" onclick="openLB(this)">
+                <img data-seqsrc="/{{ img.path }}?w={{ img_w }}&q={{ img_q }}" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" data-fullsrc="/{{ img.path }}" alt="" class="seq-img" onclick="openLB(this)">
                 <button class="rotate-btn" onclick="rotateImg(this, '{{ img.path }}', event)">↻</button>
             </div>
             {% endfor %}
@@ -219,7 +219,47 @@ fetch('/photos/settings.json?cb=' + new Date().getTime())
         previewScale('font', 2.0);
         currentImageScale = 2.0;
         currentFontScale = 2.0;
+    }).finally(() => {
+        startSequentialLoad();
     });
+
+/* ─── sequential image loading ──────────────────────────── */
+let seqQueue = [];
+let seqLoading = false;
+
+function startSequentialLoad() {
+    // Gather all unloaded sequential images
+    const imgs = Array.from(document.querySelectorAll('img.seq-img'));
+    seqQueue = imgs;
+    if (!seqLoading) {
+        seqLoading = true;
+        loadNextSeq();
+    }
+}
+
+function loadNextSeq() {
+    if (seqQueue.length === 0) {
+        seqLoading = false;
+        return;
+    }
+    const img = seqQueue.shift();
+    img.classList.remove('seq-img');
+    
+    img.onload = () => {
+        img.classList.add('loaded');
+        loadNextSeq();
+    };
+    img.onerror = () => {
+        loadNextSeq();
+    };
+    
+    // Assign src to trigger load
+    if (img.dataset.seqsrc) {
+        img.src = img.dataset.seqsrc;
+    } else {
+        loadNextSeq();
+    }
+}
 
 /* ─── lightbox ──────────────────────────────────────────── */
 
@@ -434,7 +474,7 @@ function render(data) {
 
         data.media.images.filter(i => i.year === yr).forEach(i => {
             html += `<div class="grid-item">
-                <img src="/${i.path}?w=${IMG_W}&q=${IMG_Q}" data-fullsrc="/${i.path}" alt="" loading="lazy" onclick="openLB(this)">
+                <img data-seqsrc="/${i.path}?w=${IMG_W}&q=${IMG_Q}" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" data-fullsrc="/${i.path}" alt="" class="seq-img" onclick="openLB(this)">
                 <button class="rotate-btn" onclick="rotateImg(this, '${i.path}', event)">↻</button>
             </div>`;
         });
@@ -445,6 +485,7 @@ function render(data) {
         html += '</div></div>';
     });
     feed.innerHTML = html;
+    startSequentialLoad();
 }
 
 /* ─── keyboard ──────────────────────────────────────────── */

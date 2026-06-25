@@ -177,7 +177,15 @@ body { min-height: 100vh; background: var(--bg); }
     object-fit: cover;
     transition: transform .4s cubic-bezier(.25,.46,.45,.94),
                 filter .4s ease,
-                box-shadow .4s ease;
+                box-shadow .4s ease,
+                opacity .6s ease;
+}
+
+.grid-item img.seq-img {
+    opacity: 0;
+}
+.grid-item img.loaded {
+    opacity: 1;
 }
 
 .grid-item:hover img {

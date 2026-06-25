@@ -6,6 +6,7 @@
    ═══════════════════════════════════════════════════════════ */
 :root {
     --scale:        2.0;
+    --font-scale:   2.0;
     --bg:           #f5f2ed;
     --surface:      #f5f2ed;
     --card:         #ffffff;
@@ -57,7 +58,7 @@ body { min-height: 100vh; background: var(--bg); }
 }
 
 .brand-name {
-    font-weight: 600; font-size: 19px;
+    font-weight: 600; font-size: calc(19px * var(--font-scale));
     color: var(--text);
     letter-spacing: -.3px;
 }
@@ -90,7 +91,7 @@ body { min-height: 100vh; background: var(--bg); }
 
 .topbar-icon-btn {
     width: 38px; height: 38px;
-    font-size: 20px; font-weight: 500;
+    font-size: calc(20px * var(--font-scale)); font-weight: 500;
     line-height: 1;
     color: var(--text);
     background: var(--card);
@@ -112,14 +113,14 @@ body { min-height: 100vh; background: var(--bg); }
 }
 
 .hero-date {
-    font-size: 30px; font-weight: 600;
+    font-size: calc(30px * var(--font-scale)); font-weight: 600;
     color: var(--text);
     letter-spacing: -.5px;
 }
 
 .hero-sub {
     margin-top: 6px;
-    font-size: 14px; font-weight: 400;
+    font-size: calc(14px * var(--font-scale)); font-weight: 400;
     color: var(--text-3);
 }
 
@@ -137,12 +138,12 @@ body { min-height: 100vh; background: var(--bg); }
 }
 
 .year-divider-label {
-    font-size: 15px; font-weight: 600;
+    font-size: calc(15px * var(--font-scale)); font-weight: 600;
     color: var(--text);
 }
 
 .year-divider-ago {
-    font-size: 13px; font-weight: 400;
+    font-size: calc(13px * var(--font-scale)); font-weight: 400;
     color: var(--text-3);
 }
 
@@ -190,7 +191,7 @@ body { min-height: 100vh; background: var(--bg); }
     border: none; border-radius: 50%;
     background: rgba(255,255,255,0.85);
     color: #3d3429;
-    font-size: 16px; font-weight: bold;
+    font-size: calc(16px * var(--font-scale)); font-weight: bold;
     cursor: pointer;
     opacity: 0;
     transition: all var(--transition);
@@ -269,9 +270,9 @@ body { min-height: 100vh; background: var(--bg); }
     text-align: center;
     padding: 100px 24px;
 }
-.empty-icon { font-size: 56px; opacity: .5; }
-.empty h2   { font-size: 20px; font-weight: 500; color: var(--text-2); margin-top: 16px; }
-.empty p    { font-size: 14px; color: var(--text-3); margin-top: 6px; }
+.empty-icon { font-size: calc(56px * var(--font-scale)); opacity: .5; }
+.empty h2   { font-size: calc(20px * var(--font-scale)); font-weight: 500; color: var(--text-2); margin-top: 16px; }
+.empty p    { font-size: calc(14px * var(--font-scale)); color: var(--text-3); margin-top: 6px; }
 
 /* ═══════════════════════════════════════════════════════════
    LIGHTBOX
@@ -310,7 +311,7 @@ body { min-height: 100vh; background: var(--bg); }
     width: 44px; height: 44px;
     border: none; border-radius: 50%;
     background: rgba(255,255,255,.15);
-    color: #fff; font-size: 22px;
+    color: #fff; font-size: calc(22px * var(--font-scale));
     cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     transition: background var(--transition);
@@ -350,8 +351,8 @@ body { min-height: 100vh; background: var(--bg); }
     border-bottom: 1px solid var(--border);
     background: var(--bg);
 }
-.modal-top h2  { font-size: 17px; font-weight: 600; color: var(--text); }
-.modal-close   { color: var(--text-3); font-size: 22px; cursor: pointer; line-height: 1; }
+.modal-top h2  { font-size: calc(17px * var(--font-scale)); font-weight: 600; color: var(--text); }
+.modal-close   { color: var(--text-3); font-size: calc(22px * var(--font-scale)); cursor: pointer; line-height: 1; }
 .modal-close:hover { color: var(--text); }
 
 .cal-body { padding: 20px 24px; background: var(--bg); }
@@ -360,13 +361,13 @@ body { min-height: 100vh; background: var(--bg); }
     display: flex; justify-content: space-between; align-items: center;
     margin-bottom: 14px;
 }
-.cal-nav span { font-size: 14px; font-weight: 500; color: var(--text); }
+.cal-nav span { font-size: calc(14px * var(--font-scale)); font-weight: 500; color: var(--text); }
 .cal-nav button {
     width: 34px; height: 34px;
     border: 1px solid var(--border); border-radius: 50%;
     background: var(--card);
     color: var(--text);
-    font-size: 15px; font-weight: 600;
+    font-size: calc(15px * var(--font-scale)); font-weight: 600;
     cursor: pointer;
     transition: background var(--transition);
 }
@@ -395,7 +396,7 @@ body { min-height: 100vh; background: var(--bg); }
 .cal-table td {
     text-align: center;
     height: 40px;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale));
     background: var(--card);
 }
 
@@ -491,7 +492,7 @@ body { -ms-overflow-style: none; scrollbar-width: none; }
     .grid { grid-template-columns: repeat(auto-fill, minmax(calc(160px * var(--scale)), 1fr)); }
     .hero { padding: 28px 20px 4px; }
     .year-group { padding: 0 20px 24px; }
-    .hero-date { font-size: 24px; }
+    .hero-date { font-size: calc(24px * var(--font-scale)); }
 }
 
 /* Phone */
@@ -504,32 +505,32 @@ body { -ms-overflow-style: none; scrollbar-width: none; }
     }
 
     .brand-logo { width: 28px; height: 28px; }
-    .brand-name { font-size: 15px; }
+    .brand-name { font-size: calc(15px * var(--font-scale)); }
 
     .topbar-today-btn {
         height: 34px; padding: 0 12px;
-        font-size: 12px;
+        font-size: calc(12px * var(--font-scale));
     }
     .topbar-date-btn {
         height: 34px; padding: 0 12px;
-        font-size: 12px;
+        font-size: calc(12px * var(--font-scale));
     }
     .topbar-icon-btn {
         width: 34px; height: 34px;
-        font-size: 18px;
+        font-size: calc(18px * var(--font-scale));
     }
 
     .hero {
         padding: 16px 14px 4px;
     }
-    .hero-date { font-size: 20px; }
-    .hero-sub  { font-size: 12px; }
+    .hero-date { font-size: calc(20px * var(--font-scale)); }
+    .hero-sub  { font-size: calc(12px * var(--font-scale)); }
 
     .year-group { padding: 0 4px 16px; }
 
     .year-divider { padding: 14px 10px 8px; }
-    .year-divider-label { font-size: 14px; }
-    .year-divider-ago   { font-size: 12px; }
+    .year-divider-label { font-size: calc(14px * var(--font-scale)); }
+    .year-divider-ago   { font-size: calc(12px * var(--font-scale)); }
 
     .grid {
         grid-template-columns: repeat(auto-fill, minmax(calc(120px * var(--scale)), 1fr));
@@ -553,7 +554,7 @@ body { -ms-overflow-style: none; scrollbar-width: none; }
     .rotate-btn {
         opacity: 0.8;
         width: 28px; height: 28px;
-        font-size: 14px;
+        font-size: calc(14px * var(--font-scale));
         bottom: 4px; right: 4px;
     }
 
@@ -577,13 +578,13 @@ body { -ms-overflow-style: none; scrollbar-width: none; }
     }
 
     .cal-body { padding: 14px 16px; }
-    .cal-table td { height: 44px; font-size: 14px; } /* 44px = Apple minimum touch target */
-    .cal-table thead th { padding: 8px 0; font-size: 10px; }
-    .cal-nav span { font-size: 13px; }
+    .cal-table td { height: 44px; font-size: calc(14px * var(--font-scale)); } /* 44px = Apple minimum touch target */
+    .cal-table thead th { padding: 8px 0; font-size: calc(10px * var(--font-scale)); }
+    .cal-nav span { font-size: calc(13px * var(--font-scale)); }
     .cal-nav button { width: 36px; height: 36px; }
 
     .modal-top { padding: 16px; }
-    .modal-top h2 { font-size: 16px; }
+    .modal-top h2 { font-size: calc(16px * var(--font-scale)); }
     .modal-foot { padding: 12px 16px; }
 }
 
@@ -595,8 +596,8 @@ body { -ms-overflow-style: none; scrollbar-width: none; }
     .grid-item img, .vid-card, .grid video { height: calc(155px * var(--scale)); }
 
     .topbar-brand { gap: 8px; }
-    .brand-name { font-size: 14px; }
+    .brand-name { font-size: calc(14px * var(--font-scale)); }
 
-    .topbar-today-btn { padding: 0 10px; font-size: 11px; }
-    .topbar-date-btn  { padding: 0 10px; font-size: 11px; }
+    .topbar-today-btn { padding: 0 10px; font-size: calc(11px * var(--font-scale)); }
+    .topbar-date-btn  { padding: 0 10px; font-size: calc(11px * var(--font-scale)); }
 }

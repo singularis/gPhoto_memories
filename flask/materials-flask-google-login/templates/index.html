@@ -16,12 +16,11 @@
 
 <!-- ═══ TOP BAR ════════════════════════════════════════════ -->
 <nav class="topbar">
-    <div class="topbar-brand">
+    <div class="topbar-brand" onclick="openSettings()" style="cursor:pointer">
         <img class="brand-logo" src="{{ url_for('static', filename='brand.png') }}" alt="">
         <span class="brand-name">Memories</span>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
-        <button class="topbar-icon-btn" onclick="openSettings()">⚙️</button>
         <button class="topbar-icon-btn" onclick="goPrev()">&lsaquo;</button>
         <button class="topbar-today-btn" onclick="goToday()">Today</button>
         <button class="topbar-icon-btn" onclick="goNext()">&rsaquo;</button>
@@ -50,7 +49,7 @@
         <div class="grid">
             {% for img in media['images'] if img.year == year %}
             <div class="grid-item">
-                <img src="/{{ img.path }}?w=200&q=60" data-fullsrc="/{{ img.path }}" alt="" loading="lazy" onclick="openLB(this)">
+                <img src="/{{ img.path }}?w={{ img_w }}&q={{ img_q }}" data-fullsrc="/{{ img.path }}" alt="" loading="lazy" onclick="openLB(this)">
                 <button class="rotate-btn" onclick="rotateImg(this, '{{ img.path }}', event)">↻</button>
             </div>
             {% endfor %}
@@ -114,12 +113,29 @@
             <h2>Settings</h2>
             <span class="modal-close" onclick="closeSettings()">&times;</span>
         </div>
-        <div class="cal-body">
-            <div style="margin-bottom: 12px; font-weight: 500;">
-                Picture Size Scale: <span id="scaleValDisplay">2.0</span>x
+        <div class="cal-body" style="padding: 16px 24px;">
+            <div style="margin-bottom: 20px;">
+                <div style="margin-bottom: 8px; font-weight: 500;">
+                    Image Size: <span id="imgScaleValDisplay">2.0</span>x
+                </div>
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <button class="btn-ghost" style="padding:0 12px" onclick="adjustScale('image', -0.1)">-</button>
+                    <input type="range" id="sizeScale" min="0.5" max="4.0" step="0.1" value="2.0" 
+                           oninput="previewScale('image', this.value)" style="flex:1;">
+                    <button class="btn-ghost" style="padding:0 12px" onclick="adjustScale('image', 0.1)">+</button>
+                </div>
             </div>
-            <input type="range" id="sizeScale" min="0.5" max="4.0" step="0.1" value="2.0" 
-                   oninput="previewScale(this.value)" style="width: 100%;">
+            <div>
+                <div style="margin-bottom: 8px; font-weight: 500;">
+                    Font Size: <span id="fontScaleValDisplay">1.0</span>x
+                </div>
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <button class="btn-ghost" style="padding:0 12px" onclick="adjustScale('font', -0.1)">-</button>
+                    <input type="range" id="fontScale" min="0.5" max="4.0" step="0.1" value="1.0" 
+                           oninput="previewScale('font', this.value)" style="flex:1;">
+                    <button class="btn-ghost" style="padding:0 12px" onclick="adjustScale('font', 0.1)">+</button>
+                </div>
+            </div>
         </div>
         <div class="modal-foot">
             <button class="btn-ghost" onclick="closeSettings()">Cancel</button>
@@ -135,41 +151,57 @@
 </div>
 
 <script>
+const IMG_W = {{ img_w }};
+const IMG_Q = {{ img_q }};
 /* ─── state ─────────────────────────────────────────────── */
 let calDate = new Date();
 let currentViewDate = new Date("{{ date.strftime('%Y-%m-%dT12:00:00') }}");
-let currentScale = 2.0;
+let currentImageScale = 2.0;
+let currentFontScale = 2.0;
 const MONTHS = ['January','February','March','April','May','June',
                 'July','August','September','October','November','December'];
 
 /* ─── settings ──────────────────────────────────────────── */
-function applyScale(s) {
+function applyScale(type, s) {
     const root = document.documentElement;
-    root.style.setProperty('--scale', s);
+    root.style.setProperty(`--${type === 'image' ? 'scale' : 'font-scale'}`, s);
 }
-function previewScale(s) {
-    document.getElementById('scaleValDisplay').textContent = Number(s).toFixed(1);
-    applyScale(s);
+function previewScale(type, s) {
+    s = Math.max(0.5, Math.min(4.0, Number(s)));
+    if(type === 'image') {
+        document.getElementById('sizeScale').value = s;
+        document.getElementById('imgScaleValDisplay').textContent = s.toFixed(1);
+    } else {
+        document.getElementById('fontScale').value = s;
+        document.getElementById('fontScaleValDisplay').textContent = s.toFixed(1);
+    }
+    applyScale(type, s);
+}
+function adjustScale(type, delta) {
+    const input = document.getElementById(type === 'image' ? 'sizeScale' : 'fontScale');
+    previewScale(type, parseFloat(input.value) + delta);
 }
 function openSettings() {
-    document.getElementById('sizeScale').value = currentScale;
-    document.getElementById('scaleValDisplay').textContent = Number(currentScale).toFixed(1);
+    previewScale('image', currentImageScale);
+    previewScale('font', currentFontScale);
     const m = document.getElementById('settingsModal');
     m.style.display = 'block';
     requestAnimationFrame(() => m.classList.add('open'));
 }
 function closeSettings() {
-    previewScale(currentScale); // revert if not saved
+    previewScale('image', currentImageScale); // revert if not saved
+    previewScale('font', currentFontScale);
     const m = document.getElementById('settingsModal');
     m.classList.remove('open');
     setTimeout(() => m.style.display = 'none', 200);
 }
 function saveSettings() {
-    currentScale = parseFloat(document.getElementById('sizeScale').value);
+    currentImageScale = parseFloat(document.getElementById('sizeScale').value);
+    currentFontScale = parseFloat(document.getElementById('fontScale').value);
     fetch('/api/settings', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ image_scale: currentScale })
+        body: JSON.stringify({ image_scale: currentImageScale, font_scale: currentFontScale })
     }).then(() => closeSettings());
 }
 
@@ -177,13 +209,16 @@ function saveSettings() {
 fetch('/photos/settings.json?cb=' + new Date().getTime())
     .then(r => r.json())
     .then(d => {
-        if(d.image_scale) {
-            currentScale = parseFloat(d.image_scale);
-            previewScale(currentScale);
-        }
+        if(d.image_scale) currentImageScale = parseFloat(d.image_scale);
+        if(d.font_scale) currentFontScale = parseFloat(d.font_scale);
+        previewScale('image', currentImageScale);
+        previewScale('font', currentFontScale);
     }).catch(() => {
-        // default 2.0
-        previewScale(2.0);
+        // defaults
+        previewScale('image', 2.0);
+        previewScale('font', 2.0);
+        currentImageScale = 2.0;
+        currentFontScale = 2.0;
     });
 
 /* ─── lightbox ──────────────────────────────────────────── */
@@ -276,7 +311,7 @@ function rotateImg(btn, path, e) {
              // force reload image with cache buster
              const img = btn.previousElementSibling;
              const cb = new Date().getTime();
-             img.src = `/${path}?w=200&q=60&cb=${cb}`;
+             img.src = `/${path}?w=${IMG_W}&q=${IMG_Q}&cb=${cb}`;
              btn.textContent = '↻';
              btn.disabled = false;
          }
@@ -399,7 +434,7 @@ function render(data) {
 
         data.media.images.filter(i => i.year === yr).forEach(i => {
             html += `<div class="grid-item">
-                <img src="/${i.path}?w=200&q=60" data-fullsrc="/${i.path}" alt="" loading="lazy" onclick="openLB(this)">
+                <img src="/${i.path}?w=${IMG_W}&q=${IMG_Q}" data-fullsrc="/${i.path}" alt="" loading="lazy" onclick="openLB(this)">
                 <button class="rotate-btn" onclick="rotateImg(this, '${i.path}', event)">↻</button>
             </div>`;
         });

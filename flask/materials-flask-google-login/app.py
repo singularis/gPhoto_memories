@@ -87,9 +87,15 @@ def index(selected_date=None):
     else:
         target_date = date.today()
 
+    ua = request.headers.get('User-Agent', '').lower()
+    is_mobile = any(d in ua for d in ('mobile', 'android', 'iphone', 'ipad', 'ipod'))
+    img_w = 400 if is_mobile else 800
+    img_q = 65 if is_mobile else 85
+
     media, years_found = _get_media_for_date(target_date)
     return render_template("index.html", media=media, date=target_date,
-                           years_found=years_found, selected_date=selected_date)
+                           years_found=years_found, selected_date=selected_date,
+                           img_w=img_w, img_q=img_q, is_mobile=is_mobile)
 
 
 @app.route('/get_photos/<selected_date>')

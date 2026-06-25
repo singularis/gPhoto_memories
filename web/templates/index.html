@@ -269,22 +269,33 @@ let currentLbIndex = -1;
 let lbImageSources = [];
 
 function openLB(imgEl) {
-    const allImgs = Array.from(document.querySelectorAll('.grid-item img'));
+    const allImgs = Array.from(document.querySelectorAll('.grid-item:not(.video-item) img'));
     currentLbIndex = allImgs.indexOf(imgEl);
-    lbImageSources = allImgs.map(el => el.getAttribute('data-fullsrc') || el.src.split('?')[0]);
-    showLbIndex(currentLbIndex);
+    lbImageSources = allImgs.map(el => el.getAttribute('data-fullsrc'));
+    if (currentLbIndex !== -1) {
+        showLbIndex(currentLbIndex);
+    }
 }
 
 function showLbIndex(idx) {
     if(idx < 0 || idx >= lbImageSources.length) return;
     currentLbIndex = idx;
     const lb = document.getElementById('lb');
-    lb.querySelector('img').src = lbImageSources[idx];
+    
+    // Force a micro-delay for iOS Safari repaint bug on swipe
+    setTimeout(() => {
+        lb.querySelector('img').src = lbImageSources[idx];
+    }, 10);
+    
     lb.style.display = 'flex';
     requestAnimationFrame(() => {
         requestAnimationFrame(() => lb.classList.add('open'));
     });
     document.body.style.overflow = 'hidden';
+    
+    // Preload next/prev images
+    if (idx + 1 < lbImageSources.length) new Image().src = lbImageSources[idx + 1];
+    if (idx - 1 >= 0) new Image().src = lbImageSources[idx - 1];
 }
 
 let lastSwipeTime = 0;

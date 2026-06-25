@@ -333,10 +333,8 @@ function rotateLbImg(e) {
     btn.textContent = '...';
     btn.disabled = true;
 
-    fetch('/rotate', {
-         method: 'POST',
-         headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({ path: pathOnly })
+    fetch('/rotate/' + pathOnly, {
+         method: 'POST'
      })
      .then(r => r.json())
      .then(res => {
@@ -401,7 +399,11 @@ function rotateImg(btn, path, e) {
              // force reload image with cache buster
              const img = btn.previousElementSibling;
              const cb = new Date().getTime();
-             img.src = `/${path}?w=${IMG_W}&q=${IMG_Q}&cb=${cb}`;
+             const newSrc = `/${path}?w=${IMG_W}&q=${IMG_Q}&cb=${cb}`;
+             img.src = newSrc;
+             img.dataset.seqsrc = newSrc;
+             // also update fullsrc so lightbox sees the rotation
+             img.dataset.fullsrc = `/${path}?cb=${cb}`;
              btn.textContent = '↻';
              btn.disabled = false;
          }

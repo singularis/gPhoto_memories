@@ -326,6 +326,19 @@ body { min-height: 100vh; background: var(--bg); }
 }
 .lb-x:hover { background: rgba(255,255,255,.25); }
 
+.lb-rotate {
+    position: absolute; bottom: 32px; right: 20px;
+    width: 52px; height: 52px;
+    border: none; border-radius: 50%;
+    background: rgba(0,0,0,0.6);
+    color: #fff; font-size: calc(24px * var(--font-scale));
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background var(--transition);
+    z-index: 10;
+}
+.lb-rotate:hover { background: rgba(0,0,0,0.8); }
+
 /* ═══════════════════════════════════════════════════════════
    CALENDAR MODAL
    ═══════════════════════════════════════════════════════════ */

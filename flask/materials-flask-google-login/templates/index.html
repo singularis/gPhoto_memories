@@ -74,6 +74,7 @@
 <!-- ═══ LIGHTBOX ═══════════════════════════════════════════ -->
 <div class="lb" id="lb" onclick="closeLB(event)">
     <button class="lb-x" onclick="closeLB(event)">✕</button>
+    <button class="lb-rotate" onclick="rotateLbImg(event)">↻</button>
     <img src="" alt="">
 </div>
 
@@ -286,8 +287,12 @@ function showLbIndex(idx) {
     document.body.style.overflow = 'hidden';
 }
 
+let lastSwipeTime = 0;
+
 function closeLB(e) {
-    if (e && e.target.tagName === 'IMG') return;
+    // Ignore clicks that fire immediately after a swipe
+    if (Date.now() - lastSwipeTime < 500) return;
+    
     const lb = document.getElementById('lb');
     lb.classList.remove('open');
     // Wait for fade-out transition to finish before hiding
@@ -306,13 +311,58 @@ document.getElementById('lb').addEventListener('touchstart', e => {
 
 document.getElementById('lb').addEventListener('touchend', e => {
     const touchEndX = e.changedTouches[0].screenX;
-    if (touchEndX < touchStartX - 50 && currentLbIndex < lbImageSources.length - 1) {
-        showLbIndex(currentLbIndex + 1); // swipe left
-    }
-    if (touchEndX > touchStartX + 50 && currentLbIndex > 0) {
-        showLbIndex(currentLbIndex - 1); // swipe right
+    if (Math.abs(touchEndX - touchStartX) > 50) {
+        lastSwipeTime = Date.now();
+        if (touchEndX < touchStartX - 50 && currentLbIndex < lbImageSources.length - 1) {
+            showLbIndex(currentLbIndex + 1); // swipe left
+        } else if (touchEndX > touchStartX + 50 && currentLbIndex > 0) {
+            showLbIndex(currentLbIndex - 1); // swipe right
+        }
     }
 }, {passive: true});
+
+function rotateLbImg(e) {
+    e.stopPropagation();
+    if (currentLbIndex < 0) return;
+    
+    const fullPath = lbImageSources[currentLbIndex];
+    const rawPath = fullPath.startsWith('/') ? fullPath.substring(1) : fullPath;
+    const pathOnly = rawPath.split('?')[0];
+    
+    const btn = e.currentTarget;
+    btn.textContent = '...';
+    btn.disabled = true;
+
+    fetch('/rotate', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({ path: pathOnly })
+     })
+     .then(r => r.json())
+     .then(res => {
+         if (res.status === 'success') {
+             const cb = new Date().getTime();
+             const newSrc = `/${pathOnly}?w=${IMG_W}&q=${IMG_Q}&cb=${cb}`;
+             
+             lbImageSources[currentLbIndex] = newSrc;
+             document.querySelector('#lb img').src = newSrc;
+             
+             const allImgs = document.querySelectorAll('.grid-item img');
+             if (allImgs[currentLbIndex]) {
+                 allImgs[currentLbIndex].dataset.seqsrc = newSrc;
+                 allImgs[currentLbIndex].dataset.fullsrc = newSrc;
+                 allImgs[currentLbIndex].src = newSrc;
+             }
+         } else {
+             alert("Error: " + res.error);
+         }
+     })
+     .catch(err => console.error(err))
+     .finally(() => {
+         btn.textContent = '↻';
+         btn.disabled = false;
+     });
+}
 
 /* ─── navigation ────────────────────────────────────────── */
 function goToday() {

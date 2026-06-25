@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1">
+    <title>Memories</title>
+    <meta name="description" content="Your photo memories from this day in previous years">
+    <meta name="theme-color" content="#f5f2ed">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='brand.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles/main.css') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='brand.png') }}">
+</head>
+<body>
+
+<!-- ═══ TOP BAR ════════════════════════════════════════════ -->
+<nav class="topbar">
+    <div class="topbar-brand" onclick="openSettings()" style="cursor:pointer">
+        <img class="brand-logo" src="{{ url_for('static', filename='brand.png') }}" alt="">
+        <span class="brand-name">Memories</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+        <button class="topbar-icon-btn" onclick="goPrev()">&lsaquo;</button>
+        <button class="topbar-today-btn" onclick="goToday()">Today</button>
+        <button class="topbar-icon-btn" onclick="goNext()">&rsaquo;</button>
+        <button class="topbar-date-btn" onclick="openCal()">
+            📅 <span id="btnDate">{{ date.strftime('%B %d') }}</span>
+        </button>
+    </div>
+</nav>
+
+<!-- ═══ HERO ═══════════════════════════════════════════════ -->
+<div class="hero">
+    <h1 class="hero-date" id="heroDate">{{ date.strftime('%B %d') }}</h1>
+    <p class="hero-sub" id="heroSub">{{ media['images']|length }} photos · {{ media['videos']|length }} videos · {{ years_found|length }} years of memories</p>
+</div>
+
+<!-- ═══ MEDIA ══════════════════════════════════════════════ -->
+<div id="feed">
+{% if years_found %}
+    {% for year in years_found|sort|reverse %}
+    <div class="year-group">
+        <div class="year-divider">
+            <span class="year-divider-label">{{ year }}</span>
+            <span class="year-divider-ago">{{ date.year - year }} {{ 'year' if date.year - year == 1 else 'years' }} ago</span>
+            <div class="year-divider-line"></div>
+        </div>
+        <div class="grid">
+            {% for img in media['images'] if img.year == year %}
+            <div class="grid-item">
+                <img data-seqsrc="/{{ img.path }}?w={{ img_w }}&q={{ img_q }}" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" data-fullsrc="/{{ img.path }}" alt="" class="seq-img" onclick="openLB(this)">
+                <button class="rotate-btn" onclick="rotateImg(this, '{{ img.path }}', event)">↻</button>
+            </div>
+            {% endfor %}
+            {% for vid in media['videos'] if vid.year == year %}
+            <div class="vid-card" onclick="playVid(this,'/{{ vid.path }}')">
+                <div class="vid-play"></div>
+                <span class="vid-badge">VIDEO</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+{% else %}
+    <div class="empty">
+        <div class="empty-icon">📷</div>
+        <h2>No memories for this day</h2>
+        <p>No photos or videos from {{ date.strftime('%B %d') }} in previous years</p>
+    </div>
+{% endif %}
+</div>
+
+<!-- ═══ LIGHTBOX ═══════════════════════════════════════════ -->
+<div class="lb" id="lb" onclick="closeLB(event)">
+    <button class="lb-x" onclick="closeLB(event)">✕</button>
+    <button class="lb-rotate" onclick="rotateLbImg(event)">↻</button>
+    <img src="" alt="" onclick="closeLB(event)">
+</div>
+
+<!-- ═══ CALENDAR MODAL ════════════════════════════════════= -->
+<div class="modal-bg" id="calModal">
+    <div class="modal-card">
+        <div class="modal-top">
+            <h2>Choose a date</h2>
+            <span class="modal-close" onclick="closeCal()">&times;</span>
+        </div>
+        <div class="cal-body">
+            <div class="cal-nav">
+                <button onclick="navMonth(-1)">&lsaquo;</button>
+                <span id="calTitle"></span>
+                <button onclick="navMonth(1)">&rsaquo;</button>
+            </div>
+            <table class="cal-table" id="calTable">
+                <thead>
+                    <tr>
+                        <th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th>
+                    </tr>
+                </thead>
+                <tbody id="calBody"></tbody>
+            </table>
+        </div>
+        <div class="modal-foot">
+            <button class="btn-ghost" onclick="closeCal()">Cancel</button>
+            <button class="btn-fill" onclick="pickToday()">Today</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ SETTINGS MODAL ════════════════════════════════════ -->
+<div class="modal-bg" id="settingsModal">
+    <div class="modal-card">
+        <div class="modal-top">
+            <h2>Settings</h2>
+            <span class="modal-close" onclick="closeSettings()">&times;</span>
+        </div>
+        <div class="cal-body" style="padding: 16px 24px;">
+            <div style="margin-bottom: 20px;">
+                <div style="margin-bottom: 8px; font-weight: 500;">
+                    Image Size: <span id="imgScaleValDisplay">2.0</span>x
+                </div>
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <button class="btn-ghost" style="padding:0 12px" onclick="adjustScale('image', -0.1)">-</button>
+                    <input type="range" id="sizeScale" min="0.5" max="4.0" step="0.1" value="2.0" 
+                           oninput="previewScale('image', this.value)" style="flex:1;">
+                    <button class="btn-ghost" style="padding:0 12px" onclick="adjustScale('image', 0.1)">+</button>
+                </div>
+            </div>
+            <div>
+                <div style="margin-bottom: 8px; font-weight: 500;">
+                    Font Size: <span id="fontScaleValDisplay">1.0</span>x
+                </div>
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <button class="btn-ghost" style="padding:0 12px" onclick="adjustScale('font', -0.1)">-</button>
+                    <input type="range" id="fontScale" min="0.5" max="4.0" step="0.1" value="1.0" 
+                           oninput="previewScale('font', this.value)" style="flex:1;">
+                    <button class="btn-ghost" style="padding:0 12px" onclick="adjustScale('font', 0.1)">+</button>
+                </div>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn-ghost" onclick="closeSettings()">Cancel</button>
+            <button class="btn-fill" onclick="saveSettings()">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ LOADING ════════════════════════════════════════════ -->
+<div class="loading-scrim" id="loadScrim">
+    <div class="spinner"></div>
+    <p>Loading memories…</p>
+</div>
+
+<script>
+const IMG_W = {{ img_w }};
+const IMG_Q = {{ img_q }};
+/* ─── state ─────────────────────────────────────────────── */
+let calDate = new Date();
+let currentViewDate = new Date("{{ date.strftime('%Y-%m-%dT12:00:00') }}");
+let currentImageScale = 2.0;
+let currentFontScale = 2.0;
+const MONTHS = ['January','February','March','April','May','June',
+                'July','August','September','October','November','December'];
+
+/* ─── settings ──────────────────────────────────────────── */
+function applyScale(type, s) {
+    const root = document.documentElement;
+    root.style.setProperty(`--${type === 'image' ? 'scale' : 'font-scale'}`, s);
+}
+function previewScale(type, s) {
+    s = Math.max(0.5, Math.min(4.0, Number(s)));
+    if(type === 'image') {
+        document.getElementById('sizeScale').value = s;
+        document.getElementById('imgScaleValDisplay').textContent = s.toFixed(1);
+    } else {
+        document.getElementById('fontScale').value = s;
+        document.getElementById('fontScaleValDisplay').textContent = s.toFixed(1);
+    }
+    applyScale(type, s);
+}
+function adjustScale(type, delta) {
+    const input = document.getElementById(type === 'image' ? 'sizeScale' : 'fontScale');
+    previewScale(type, parseFloat(input.value) + delta);
+}
+function openSettings() {
+    previewScale('image', currentImageScale);
+    previewScale('font', currentFontScale);
+    const m = document.getElementById('settingsModal');
+    m.style.display = 'block';
+    requestAnimationFrame(() => m.classList.add('open'));
+}
+function closeSettings() {
+    previewScale('image', currentImageScale); // revert if not saved
+    previewScale('font', currentFontScale);
+    const m = document.getElementById('settingsModal');
+    m.classList.remove('open');
+    setTimeout(() => m.style.display = 'none', 200);
+}
+function saveSettings() {
+    currentImageScale = parseFloat(document.getElementById('sizeScale').value);
+    currentFontScale = parseFloat(document.getElementById('fontScale').value);
+    fetch('/api/settings', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ image_scale: currentImageScale, font_scale: currentFontScale })
+    }).then(() => closeSettings());
+}
+
+// Load settings on boot
+fetch('/photos/settings.json?cb=' + new Date().getTime())
+    .then(r => r.json())
+    .then(d => {
+        if(d.image_scale) currentImageScale = parseFloat(d.image_scale);
+        if(d.font_scale) currentFontScale = parseFloat(d.font_scale);
+        previewScale('image', currentImageScale);
+        previewScale('font', currentFontScale);
+    }).catch(() => {
+        // defaults
+        previewScale('image', 2.0);
+        previewScale('font', 2.0);
+        currentImageScale = 2.0;
+        currentFontScale = 2.0;
+    }).finally(() => {
+        startSequentialLoad();
+    });
+
+/* ─── sequential image loading ──────────────────────────── */
+let seqQueue = [];
+let seqLoading = false;
+
+function startSequentialLoad() {
+    // Gather all unloaded sequential images
+    const imgs = Array.from(document.querySelectorAll('img.seq-img'));
+    seqQueue = imgs;
+    if (!seqLoading) {
+        seqLoading = true;
+        loadNextSeq();
+    }
+}
+
+function loadNextSeq() {
+    if (seqQueue.length === 0) {
+        seqLoading = false;
+        return;
+    }
+    const img = seqQueue.shift();
+    img.classList.remove('seq-img');
+    
+    img.onload = () => {
+        img.classList.add('loaded');
+        loadNextSeq();
+    };
+    img.onerror = () => {
+        loadNextSeq();
+    };
+    
+    // Assign src to trigger load
+    if (img.dataset.seqsrc) {
+        img.src = img.dataset.seqsrc;
+    } else {
+        loadNextSeq();
+    }
+}
+
+/* ─── lightbox ──────────────────────────────────────────── */
+
+/* ─── lightbox ──────────────────────────────────────────── */
+let currentLbIndex = -1;
+let lbImageSources = [];
+
+function openLB(imgEl) {
+    const allImgs = Array.from(document.querySelectorAll('.grid-item img'));
+    currentLbIndex = allImgs.indexOf(imgEl);
+    lbImageSources = allImgs.map(el => el.getAttribute('data-fullsrc') || el.src.split('?')[0]);
+    showLbIndex(currentLbIndex);
+}
+
+function showLbIndex(idx) {
+    if(idx < 0 || idx >= lbImageSources.length) return;
+    currentLbIndex = idx;
+    const lb = document.getElementById('lb');
+    lb.querySelector('img').src = lbImageSources[idx];
+    lb.style.display = 'flex';
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => lb.classList.add('open'));
+    });
+    document.body.style.overflow = 'hidden';
+}
+
+let lastSwipeTime = 0;
+
+function closeLB(e) {
+    // Ignore clicks that fire immediately after a swipe
+    if (Date.now() - lastSwipeTime < 500) return;
+    
+    const lb = document.getElementById('lb');
+    lb.classList.remove('open');
+    // Wait for fade-out transition to finish before hiding
+    setTimeout(() => {
+        lb.style.display = 'none';
+        lb.querySelector('img').src = '';
+    }, 350);
+    document.body.style.overflow = '';
+}
+
+/* Lightbox Swipe Gestures */
+let touchStartX = 0;
+document.getElementById('lb').addEventListener('touchstart', e => {
+    touchStartX = e.changedTouches[0].screenX;
+}, {passive: true});
+
+document.getElementById('lb').addEventListener('touchend', e => {
+    const touchEndX = e.changedTouches[0].screenX;
+    if (Math.abs(touchEndX - touchStartX) > 50) {
+        lastSwipeTime = Date.now();
+        if (touchEndX < touchStartX - 50 && currentLbIndex < lbImageSources.length - 1) {
+            showLbIndex(currentLbIndex + 1); // swipe left
+        } else if (touchEndX > touchStartX + 50 && currentLbIndex > 0) {
+            showLbIndex(currentLbIndex - 1); // swipe right
+        }
+    }
+}, {passive: true});
+
+function rotateLbImg(e) {
+    e.stopPropagation();
+    if (currentLbIndex < 0) return;
+    
+    const fullPath = lbImageSources[currentLbIndex];
+    const rawPath = fullPath.startsWith('/') ? fullPath.substring(1) : fullPath;
+    const pathOnly = rawPath.split('?')[0];
+    
+    const btn = e.currentTarget;
+    btn.textContent = '...';
+    btn.disabled = true;
+
+    fetch('/rotate', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({ path: pathOnly })
+     })
+     .then(r => r.json())
+     .then(res => {
+         if (res.status === 'success') {
+             const cb = new Date().getTime();
+             const newSrc = `/${pathOnly}?w=${IMG_W}&q=${IMG_Q}&cb=${cb}`;
+             
+             lbImageSources[currentLbIndex] = newSrc;
+             document.querySelector('#lb img').src = newSrc;
+             
+             const allImgs = document.querySelectorAll('.grid-item img');
+             if (allImgs[currentLbIndex]) {
+                 allImgs[currentLbIndex].dataset.seqsrc = newSrc;
+                 allImgs[currentLbIndex].dataset.fullsrc = newSrc;
+                 allImgs[currentLbIndex].src = newSrc;
+             }
+         } else {
+             alert("Error: " + res.error);
+         }
+     })
+     .catch(err => console.error(err))
+     .finally(() => {
+         btn.textContent = '↻';
+         btn.disabled = false;
+     });
+}
+
+/* ─── navigation ────────────────────────────────────────── */
+function goToday() {
+    const t = new Date();
+    const ds = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
+    loadDate(ds);
+}
+function goPrev() {
+    currentViewDate.setDate(currentViewDate.getDate() - 1);
+    const ds = `${currentViewDate.getFullYear()}-${String(currentViewDate.getMonth()+1).padStart(2,'0')}-${String(currentViewDate.getDate()).padStart(2,'0')}`;
+    loadDate(ds);
+}
+function goNext() {
+    currentViewDate.setDate(currentViewDate.getDate() + 1);
+    const ds = `${currentViewDate.getFullYear()}-${String(currentViewDate.getMonth()+1).padStart(2,'0')}-${String(currentViewDate.getDate()).padStart(2,'0')}`;
+    loadDate(ds);
+}
+
+/* ─── video on-demand & tools ─────────────────────────────── */
+function playVid(el, src) {
+    const v = document.createElement('video');
+    v.controls = true; v.autoplay = true;
+    const s = document.createElement('source');
+    s.src = src; s.type = 'video/mp4';
+    v.appendChild(s);
+    el.replaceWith(v);
+}
+function rotateImg(btn, path, e) {
+    e.stopPropagation();
+    btn.disabled = true;
+    btn.textContent = '...';
+    fetch('/rotate/' + path, {method: 'POST'})
+      .then(r => r.json())
+      .then(d => {
+         if(d.status === 'success') {
+             // force reload image with cache buster
+             const img = btn.previousElementSibling;
+             const cb = new Date().getTime();
+             img.src = `/${path}?w=${IMG_W}&q=${IMG_Q}&cb=${cb}`;
+             btn.textContent = '↻';
+             btn.disabled = false;
+         }
+      }).catch(() => {
+         btn.textContent = '↻';
+         btn.disabled = false;
+      });
+}
+
+/* ─── calendar ──────────────────────────────────────────── */
+function openCal() {
+    const m = document.getElementById('calModal');
+    m.style.display = 'block';
+    requestAnimationFrame(() => m.classList.add('open'));
+    buildCal();
+}
+function closeCal() {
+    const m = document.getElementById('calModal');
+    m.classList.remove('open');
+    setTimeout(() => m.style.display = 'none', 200);
+}
+function navMonth(d) { calDate.setMonth(calDate.getMonth() + d); buildCal(); }
+
+function buildCal() {
+    document.getElementById('calTitle').textContent =
+        MONTHS[calDate.getMonth()] + ' ' + calDate.getFullYear();
+
+    const tbody = document.getElementById('calBody');
+    tbody.innerHTML = '';
+
+    const firstDay = new Date(calDate.getFullYear(), calDate.getMonth(), 1).getDay();
+    const totalDays = new Date(calDate.getFullYear(), calDate.getMonth()+1, 0).getDate();
+    const today = new Date();
+
+    let dayNum = 1;
+    // Build 6 rows max (covers all months)
+    for (let row = 0; row < 6; row++) {
+        if (dayNum > totalDays) break;
+        const tr = document.createElement('tr');
+        for (let col = 0; col < 7; col++) {
+            const td = document.createElement('td');
+            if (row === 0 && col < firstDay) {
+                // Empty cell before first day
+                td.className = 'cal-empty';
+            } else if (dayNum > totalDays) {
+                // Empty cell after last day
+                td.className = 'cal-empty';
+            } else {
+                td.textContent = dayNum;
+                td.className = 'cal-day';
+                if (calDate.getFullYear() === today.getFullYear() &&
+                    calDate.getMonth() === today.getMonth() &&
+                    dayNum === today.getDate()) {
+                    td.classList.add('today');
+                }
+                const d = dayNum;
+                td.onclick = () => pickDay(d);
+                dayNum++;
+            }
+            tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+    }
+}
+
+function pickDay(d) {
+    const ds = `${calDate.getFullYear()}-${String(calDate.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    closeCal(); loadDate(ds);
+}
+function pickToday() {
+    const t = new Date();
+    const ds = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
+    closeCal(); loadDate(ds);
+}
+
+/* ─── fetch + render ────────────────────────────────────── */
+function loadDate(ds) {
+    document.getElementById('loadScrim').style.display = 'flex';
+    history.pushState({}, '', '/date/' + ds);
+    const [y,m,d] = ds.split('-');
+    currentViewDate = new Date(+y, +m-1, +d, 12, 0, 0);
+
+    fetch('/get_photos/' + ds).then(r => r.json()).then(data => {
+        render(data);
+        document.getElementById('loadScrim').style.display = 'none';
+    }).catch(() => {
+        document.getElementById('loadScrim').style.display = 'none';
+    });
+}
+
+function render(data) {
+    const [y,m,d] = data.date.split('-');
+    const dt = new Date(+y, +m-1, +d);
+    const nice = dt.toLocaleDateString('en-US', {month:'long', day:'numeric'});
+
+    document.getElementById('heroDate').textContent = nice;
+    document.getElementById('btnDate').textContent = nice;
+    document.getElementById('heroSub').textContent =
+        data.media.images.length + ' photos · ' + data.media.videos.length +
+        ' videos · ' + data.years_found.length + ' years of memories';
+
+    const feed = document.getElementById('feed');
+    if (!data.years_found.length) {
+        feed.innerHTML = `<div class="empty"><div class="empty-icon">📷</div>
+            <h2>No memories for this day</h2>
+            <p>No photos or videos from ${data.formatted_date} in previous years</p></div>`;
+        return;
+    }
+
+    const now = new Date().getFullYear();
+    let html = '';
+    data.years_found.sort((a,b) => b-a).forEach(yr => {
+        const ago = now - yr;
+        html += `<div class="year-group">
+            <div class="year-divider">
+                <span class="year-divider-label">${yr}</span>
+                <span class="year-divider-ago">${ago === 1 ? '1 year ago' : ago + ' years ago'}</span>
+                <div class="year-divider-line"></div>
+            </div><div class="grid">`;
+
+        data.media.images.filter(i => i.year === yr).forEach(i => {
+            html += `<div class="grid-item">
+                <img data-seqsrc="/${i.path}?w=${IMG_W}&q=${IMG_Q}" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" data-fullsrc="/${i.path}" alt="" class="seq-img" onclick="openLB(this)">
+                <button class="rotate-btn" onclick="rotateImg(this, '${i.path}', event)">↻</button>
+            </div>`;
+        });
+        data.media.videos.filter(v => v.year === yr).forEach(v => {
+            html += `<div class="vid-card" onclick="playVid(this,'/${v.path}')">
+                <div class="vid-play"></div><span class="vid-badge">VIDEO</span></div>`;
+        });
+        html += '</div></div>';
+    });
+    feed.innerHTML = html;
+    startSequentialLoad();
+}
+
+/* ─── keyboard ──────────────────────────────────────────── */
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { closeLB(e); closeCal(); closeSettings(); }
+    const lb = document.getElementById('lb');
+    if (lb && lb.classList.contains('open')) {
+        if (e.key === 'ArrowRight' && currentLbIndex < lbImageSources.length - 1) showLbIndex(currentLbIndex + 1);
+        if (e.key === 'ArrowLeft' && currentLbIndex > 0) showLbIndex(currentLbIndex - 1);
+    }
+});
+window.addEventListener('click', e => {
+    if (e.target === document.getElementById('calModal')) closeCal();
+    if (e.target === document.getElementById('settingsModal')) closeSettings();
+});
+</script>
+</body>
+</html>

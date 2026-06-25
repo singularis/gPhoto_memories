@@ -50,7 +50,7 @@
         <div class="grid">
             {% for img in media['images'] if img.year == year %}
             <div class="grid-item">
-                <img src="/{{ img.path }}?w=200&q=60" alt="" loading="lazy" onclick="openLB('/{{ img.path }}')">
+                <img src="/{{ img.path }}?w=200&q=60" data-fullsrc="/{{ img.path }}" alt="" loading="lazy" onclick="openLB(this)">
                 <button class="rotate-btn" onclick="rotateImg(this, '{{ img.path }}', event)">↻</button>
             </div>
             {% endfor %}
@@ -187,6 +187,58 @@ fetch('/photos/settings.json?cb=' + new Date().getTime())
     });
 
 /* ─── lightbox ──────────────────────────────────────────── */
+
+/* ─── lightbox ──────────────────────────────────────────── */
+let currentLbIndex = -1;
+let lbImageSources = [];
+
+function openLB(imgEl) {
+    const allImgs = Array.from(document.querySelectorAll('.grid-item img'));
+    currentLbIndex = allImgs.indexOf(imgEl);
+    lbImageSources = allImgs.map(el => el.getAttribute('data-fullsrc') || el.src.split('?')[0]);
+    showLbIndex(currentLbIndex);
+}
+
+function showLbIndex(idx) {
+    if(idx < 0 || idx >= lbImageSources.length) return;
+    currentLbIndex = idx;
+    const lb = document.getElementById('lb');
+    lb.querySelector('img').src = lbImageSources[idx];
+    lb.style.display = 'flex';
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => lb.classList.add('open'));
+    });
+    document.body.style.overflow = 'hidden';
+}
+
+function closeLB(e) {
+    if (e && e.target.tagName === 'IMG') return;
+    const lb = document.getElementById('lb');
+    lb.classList.remove('open');
+    // Wait for fade-out transition to finish before hiding
+    setTimeout(() => {
+        lb.style.display = 'none';
+        lb.querySelector('img').src = '';
+    }, 350);
+    document.body.style.overflow = '';
+}
+
+/* Lightbox Swipe Gestures */
+let touchStartX = 0;
+document.getElementById('lb').addEventListener('touchstart', e => {
+    touchStartX = e.changedTouches[0].screenX;
+}, {passive: true});
+
+document.getElementById('lb').addEventListener('touchend', e => {
+    const touchEndX = e.changedTouches[0].screenX;
+    if (touchEndX < touchStartX - 50 && currentLbIndex < lbImageSources.length - 1) {
+        showLbIndex(currentLbIndex + 1); // swipe left
+    }
+    if (touchEndX > touchStartX + 50 && currentLbIndex > 0) {
+        showLbIndex(currentLbIndex - 1); // swipe right
+    }
+}, {passive: true});
+
 /* ─── navigation ────────────────────────────────────────── */
 function goToday() {
     const t = new Date();
@@ -202,27 +254,6 @@ function goNext() {
     currentViewDate.setDate(currentViewDate.getDate() + 1);
     const ds = `${currentViewDate.getFullYear()}-${String(currentViewDate.getMonth()+1).padStart(2,'0')}-${String(currentViewDate.getDate()).padStart(2,'0')}`;
     loadDate(ds);
-}
-function openLB(src) {
-    const lb = document.getElementById('lb');
-    lb.querySelector('img').src = src;
-    lb.style.display = 'flex';
-    // Trigger animation on next frame so display:flex is applied first
-    requestAnimationFrame(() => {
-        requestAnimationFrame(() => lb.classList.add('open'));
-    });
-    document.body.style.overflow = 'hidden';
-}
-function closeLB(e) {
-    if (e && e.target.tagName === 'IMG') return;
-    const lb = document.getElementById('lb');
-    lb.classList.remove('open');
-    // Wait for fade-out transition to finish before hiding
-    setTimeout(() => {
-        lb.style.display = 'none';
-        lb.querySelector('img').src = '';
-    }, 350);
-    document.body.style.overflow = '';
 }
 
 /* ─── video on-demand & tools ─────────────────────────────── */
@@ -368,7 +399,7 @@ function render(data) {
 
         data.media.images.filter(i => i.year === yr).forEach(i => {
             html += `<div class="grid-item">
-                <img src="/${i.path}?w=200&q=60" alt="" loading="lazy" onclick="openLB('/${i.path}')">
+                <img src="/${i.path}?w=200&q=60" data-fullsrc="/${i.path}" alt="" loading="lazy" onclick="openLB(this)">
                 <button class="rotate-btn" onclick="rotateImg(this, '${i.path}', event)">↻</button>
             </div>`;
         });
@@ -384,6 +415,11 @@ function render(data) {
 /* ─── keyboard ──────────────────────────────────────────── */
 document.addEventListener('keydown', e => {
     if (e.key === 'Escape') { closeLB(e); closeCal(); closeSettings(); }
+    const lb = document.getElementById('lb');
+    if (lb && lb.classList.contains('open')) {
+        if (e.key === 'ArrowRight' && currentLbIndex < lbImageSources.length - 1) showLbIndex(currentLbIndex + 1);
+        if (e.key === 'ArrowLeft' && currentLbIndex > 0) showLbIndex(currentLbIndex - 1);
+    }
 });
 window.addEventListener('click', e => {
     if (e.target === document.getElementById('calModal')) closeCal();

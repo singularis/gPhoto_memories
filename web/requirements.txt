@@ -1,10 +1,6 @@
 click
 Flask
-Flask-Login
 gunicorn
-requests
-oauthlib
-pyOpenSSL
 prometheus_client
 werkzeug
 Pillow

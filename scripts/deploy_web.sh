@@ -29,7 +29,7 @@ kubectl rollout status -n gphoto deployment/gphoto-flask-deployment
 echo "✅ Deployed gphoto:$TAG"
 
 echo "── Cleaning up old docker tags (keeping newest 3) ──"
-IMAGES_TO_DELETE=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep "docker.io/singularis314/gphoto" | tail -n +4)
+IMAGES_TO_DELETE=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep "^singularis314/gphoto:" | grep -v "<none>" | tail -n +4)
 if [ -n "$IMAGES_TO_DELETE" ]; then
     echo "$IMAGES_TO_DELETE" | xargs -r docker rmi || true
 else

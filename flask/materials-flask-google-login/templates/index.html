@@ -21,7 +21,9 @@
         <span class="brand-name">Memories</span>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
+        <button class="topbar-icon-btn" onclick="goPrev()">&lsaquo;</button>
         <button class="topbar-today-btn" onclick="goToday()">Today</button>
+        <button class="topbar-icon-btn" onclick="goNext()">&rsaquo;</button>
         <button class="topbar-date-btn" onclick="openCal()">
             📅 <span id="btnDate">{{ date.strftime('%B %d') }}</span>
         </button>
@@ -46,8 +48,9 @@
         </div>
         <div class="grid">
             {% for img in media['images'] if img.year == year %}
-            <div class="grid-item" onclick="openLB('/{{ img.path }}')">
-                <img src="/{{ img.path }}?w=200&q=60" alt="" loading="lazy">
+            <div class="grid-item">
+                <img src="/{{ img.path }}?w=200&q=60" alt="" loading="lazy" onclick="openLB('/{{ img.path }}')">
+                <button class="rotate-btn" onclick="rotateImg(this, '{{ img.path }}', event)">↻</button>
             </div>
             {% endfor %}
             {% for vid in media['videos'] if vid.year == year %}
@@ -112,13 +115,25 @@
 <script>
 /* ─── state ─────────────────────────────────────────────── */
 let calDate = new Date();
+let currentViewDate = new Date("{{ date.strftime('%Y-%m-%dT12:00:00') }}");
 const MONTHS = ['January','February','March','April','May','June',
                 'July','August','September','October','November','December'];
 
 /* ─── lightbox ──────────────────────────────────────────── */
+/* ─── navigation ────────────────────────────────────────── */
 function goToday() {
     const t = new Date();
     const ds = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
+    loadDate(ds);
+}
+function goPrev() {
+    currentViewDate.setDate(currentViewDate.getDate() - 1);
+    const ds = `${currentViewDate.getFullYear()}-${String(currentViewDate.getMonth()+1).padStart(2,'0')}-${String(currentViewDate.getDate()).padStart(2,'0')}`;
+    loadDate(ds);
+}
+function goNext() {
+    currentViewDate.setDate(currentViewDate.getDate() + 1);
+    const ds = `${currentViewDate.getFullYear()}-${String(currentViewDate.getMonth()+1).padStart(2,'0')}-${String(currentViewDate.getDate()).padStart(2,'0')}`;
     loadDate(ds);
 }
 function openLB(src) {
@@ -143,7 +158,7 @@ function closeLB(e) {
     document.body.style.overflow = '';
 }
 
-/* ─── video on-demand ───────────────────────────────────── */
+/* ─── video on-demand & tools ─────────────────────────────── */
 function playVid(el, src) {
     const v = document.createElement('video');
     v.controls = true; v.autoplay = true;
@@ -151,6 +166,26 @@ function playVid(el, src) {
     s.src = src; s.type = 'video/mp4';
     v.appendChild(s);
     el.replaceWith(v);
+}
+function rotateImg(btn, path, e) {
+    e.stopPropagation();
+    btn.disabled = true;
+    btn.textContent = '...';
+    fetch('/rotate/' + path, {method: 'POST'})
+      .then(r => r.json())
+      .then(d => {
+         if(d.status === 'success') {
+             // force reload image with cache buster
+             const img = btn.previousElementSibling;
+             const cb = new Date().getTime();
+             img.src = `/${path}?w=200&q=60&cb=${cb}`;
+             btn.textContent = '↻';
+             btn.disabled = false;
+         }
+      }).catch(() => {
+         btn.textContent = '↻';
+         btn.disabled = false;
+      });
 }
 
 /* ─── calendar ──────────────────────────────────────────── */
@@ -223,6 +258,8 @@ function pickToday() {
 function loadDate(ds) {
     document.getElementById('loadScrim').style.display = 'flex';
     history.pushState({}, '', '/date/' + ds);
+    const [y,m,d] = ds.split('-');
+    currentViewDate = new Date(+y, +m-1, +d, 12, 0, 0);
 
     fetch('/get_photos/' + ds).then(r => r.json()).then(data => {
         render(data);
@@ -263,8 +300,10 @@ function render(data) {
             </div><div class="grid">`;
 
         data.media.images.filter(i => i.year === yr).forEach(i => {
-            html += `<div class="grid-item" onclick="openLB('/${i.path}')">
-                <img src="/${i.path}?w=200&q=60" alt="" loading="lazy"></div>`;
+            html += `<div class="grid-item">
+                <img src="/${i.path}?w=200&q=60" alt="" loading="lazy" onclick="openLB('/${i.path}')">
+                <button class="rotate-btn" onclick="rotateImg(this, '${i.path}', event)">↻</button>
+            </div>`;
         });
         data.media.videos.filter(v => v.year === yr).forEach(v => {
             html += `<div class="vid-card" onclick="playVid(this,'/${v.path}')">

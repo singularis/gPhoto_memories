@@ -67,9 +67,12 @@ def _get_media_for_date(target_date):
     return media, years_found
 
 
-def _thumb_cache_path(filename, width, height, quality):
+def _thumb_cache_path(filename, width, height, quality, cb=None):
     """Return the cache file path for a given resize request."""
-    key = hashlib.md5(f"{filename}:{width}:{height}:{quality}".encode()).hexdigest()
+    key_str = f"{filename}:{width}:{height}:{quality}"
+    if cb:
+        key_str += f":{cb}"
+    key = hashlib.md5(key_str.encode()).hexdigest()
     return os.path.join(CACHE_DIR, f"{key}.jpg")
 
 
@@ -142,7 +145,8 @@ def serve_photos(filename):
         return send_from_directory('/photos', filename)
 
     # ── Thumbnail cache hit ───────────────────────────────────────────────────
-    cache_path = _thumb_cache_path(filename, width, height, quality)
+    cb = request.args.get('cb')
+    cache_path = _thumb_cache_path(filename, width, height, quality, cb)
     if os.path.exists(cache_path):
         return send_from_directory(CACHE_DIR, os.path.basename(cache_path),
                                    mimetype='image/jpeg')
@@ -204,6 +208,27 @@ def serve_photos(filename):
             return send_from_directory('/photos', filename)
         except Exception:
             return "Photo not found", 404
+
+
+@app.route('/rotate/<path:filename>', methods=['POST'])
+def rotate_photo(filename):
+    file_path = os.path.join('/photos', filename)
+    if not os.path.exists(file_path):
+        return jsonify({'error': 'Not found'}), 404
+
+    try:
+        with Image.open(file_path) as img:
+            # Rotate raw pixels clockwise
+            rotated = img.rotate(-90, expand=True)
+            if 'exif' in img.info:
+                rotated.save(file_path, quality=95, exif=img.info['exif'])
+            else:
+                rotated.save(file_path, quality=95)
+
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        logging.error("Rotate error: %s", e)
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/metrics/')

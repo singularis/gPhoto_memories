@@ -1,477 +1,694 @@
 #!/usr/bin/env python3
 """
-Google Takeout photo/video processor — v2.
+Google Takeout photo/video processor — v3.
 
-Extracts Google Takeout zip archives one at a time, organises every media file
-into PROCESSING_PATH/<YYYY_MM_DD>/ folders, then deletes the temporary
-extraction tree.
+Rebuilds the memories library so every date folder holds exactly the items
+Google Photos shows for that day.
 
-Date detection uses a 4-level fallback chain:
-  1. Exact JSON sidecar  (file.supplemental-metadata.json)
-  2. Stem-match sidecar  (same filename stem, different extension's sidecar)
-  3. Filename date parse  (IMG_20180701_095141.jpg → 2018_07_01)
-  4. Zip folder year      ("Photos from 2022" → 2022_01_01)
+Why v3 (findings from the 2026-06 takeout, 10 zips, 183k media files):
+  * Google packs most JSON sidecars into the first zips (zip 1: 37k JSON,
+    zip 10: 88 JSON for 3.8k media). Sidecars must be indexed across ALL zips.
+  * Sidecar names are capped at 51 chars, so ".supplemental-metadata" gets
+    truncated (".supplemental-.json", ".sup.json", "..json", ...) and long
+    media names are truncated too.
+  * Duplicates: "IMG_1(1).jpg" pairs with "IMG_1.jpg.supplemental-metadata(1).json".
+  * Album folders repeat items that are also in "Photos from YYYY"; the JSON
+    "url" is the unique Google Photos item id, used for de-duplication.
+  * Live Photo (.MOV/.MP4/no extension) and Pixel Motion Photo (.MP) clips
+    have no JSON and are not separate items in Google Photos.
+  * "-edited" files share the original's JSON; Google Photos shows only the
+    edited version.
+  * Trash items ("trashed": true) and archived items are not in the timeline.
+  * photoTakenTime is UTC; Google Photos shows the local capture date, so the
+    timestamp is converted with the timezone of the GPS location (or of the
+    nearest geotagged item in time).
 
-After each zip is fully processed a per-zip checksum manifest is written to
-PROCESSING_PATH/.manifests/<archive_name>.json so every source→dest mapping
-is auditable.
+Output layout (PROCESSING_PATH):
+  YYYY_MM_DD/<file>             visible items (what the UI lists)
+  YYYY_MM_DD/.live/<file>       live/motion clips and pre-edit originals
+  _archived/YYYY_MM_DD/<file>   archived items
+  _trash/<file>                 trashed items
+  _undated/<file>               no sidecar and no date in the filename
+  .manifests/index.json         every source member -> destination + metadata
+
+Usage:
+  .venv/bin/python google_takeout_processor.py plan
+  .venv/bin/python google_takeout_processor.py sample -n 50
+  .venv/bin/python google_takeout_processor.py run [--out DIR]
 """
 
-import os
-import re
-import json
-import shutil
-import zipfile
+import argparse
+import bisect
 import glob
-import sys
+import json
 import logging
 import logging.handlers
-from datetime import datetime
-from pathlib import Path
-from collections import defaultdict
+import os
+import random
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import zipfile
+from collections import Counter, defaultdict
+from dataclasses import dataclass, field, asdict
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+from timezonefinder import TimezoneFinder
 
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
 TAKEOUT_PATH    = "/other_hdd/google_phots_all_take_out"
 PROCESSING_PATH = "/other_hdd/google_phots_all_take_for_processing"
-MANIFEST_DIR    = os.path.join(PROCESSING_PATH, ".manifests")
 
-DISK_HEADROOM_FACTOR = 1.3
-
-# ---------------------------------------------------------------------------
-# Logging  (rotating file + console)
-# ---------------------------------------------------------------------------
 script_dir = os.path.dirname(os.path.abspath(__file__))
-log_file   = os.path.join(script_dir, "google_takeout_processor.log")
+CACHE_DIR  = os.path.join(script_dir, ".cache")
+SIDECAR_CACHE = os.path.join(CACHE_DIR, "sidecars.json")
+DEFAULT_TZ = "Europe/Kyiv"
 
-_rotating_handler = logging.handlers.RotatingFileHandler(
-    log_file, maxBytes=10 * 1024 * 1024, backupCount=3, encoding="utf-8"
-)
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+log_file = os.path.join(script_dir, "google_takeout_processor.log")
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[_rotating_handler, logging.StreamHandler()],
+    handlers=[
+        logging.handlers.RotatingFileHandler(log_file, maxBytes=10 * 1024 * 1024,
+                                             backupCount=3, encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
 )
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# State file
+# File types
 # ---------------------------------------------------------------------------
-STATE_FILE = os.path.join(script_dir, "processed_archives.json")
-
-
-def _load_state() -> set:
-    if os.path.exists(STATE_FILE):
-        try:
-            with open(STATE_FILE, "r", encoding="utf-8") as f:
-                return set(json.load(f).get("processed", []))
-        except Exception as exc:
-            logger.warning("Could not read state file (%s: %s) – starting fresh.", type(exc).__name__, exc)
-    return set()
-
-
-def _save_state(processed: set) -> None:
-    try:
-        with open(STATE_FILE, "w", encoding="utf-8") as f:
-            json.dump({"processed": sorted(processed)}, f, indent=2)
-    except Exception as exc:
-        logger.error("Could not save state file (%s: %s).", type(exc).__name__, exc)
-
-
-# ---------------------------------------------------------------------------
-# Media & sidecar extensions
-# ---------------------------------------------------------------------------
-IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp", ".heic", ".heif"}
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp", ".heic", ".heif", ".dng"}
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".m4v", ".3gp"}
-MEDIA_EXTS = IMAGE_EXTS | VIDEO_EXTS
+MOTION_EXTS = {".mp", ".mp~2"}  # Pixel motion photo video part
 
-# Regex for dates embedded in filenames: IMG_20180701_095141, VID_20200315, etc.
-_FILENAME_DATE_RE = re.compile(r"(?:^|[_\-])(\d{4})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])(?:[_\-]|$)")
-
-# Regex for folder names like "Photos from 2022"
-_FOLDER_YEAR_RE = re.compile(r"Photos from (\d{4})")
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-def _safe_folder_name(name: str) -> str:
-    return re.sub(r"[()\"'\\]", "", name).strip()
+SUPPLEMENTAL = "supplemental-metadata"
+_DUP_RE = re.compile(r"^(?P<stem>.*)\((?P<n>\d+)\)(?P<ext>\.[^.]*)?$")
+_JSON_DUP_RE = re.compile(r"^(?P<body>.*?)(?:\((?P<n>\d+)\))?\.json$", re.IGNORECASE)
+_EDITED_RE = re.compile(r"-(edited|bearbeitet|modifié|modificato|editado|bewerkt)$", re.IGNORECASE)
+_YEAR_FOLDER_RE = re.compile(r"^Photos from \d{4}$")
+# IMG_20180701_095141, PXL_20210831_171945007, VID_20200315_..., 20251227_145103
+_FN_DT_RE = re.compile(r"(?:^|[^\d])(20\d{2}|19\d{2})(\d{2})(\d{2})[_\-](\d{2})(\d{2})(\d{2})")
+# Screenshot_2019-12-31-23-11-37
+_FN_DT_DASH_RE = re.compile(r"(20\d{2}|19\d{2})-(\d{2})-(\d{2})[-_ ](\d{2})[-.](\d{2})[-.](\d{2})")
 
 
-def _unique_dest(dest_path: str) -> str:
-    if not os.path.exists(dest_path):
-        return dest_path
-    p = Path(dest_path)
-    suffix = p.suffix
-    stem   = p.name[: len(p.name) - len(suffix)]
-    parent = p.parent
-    counter = 1
-    while True:
-        candidate = parent / f"{stem}_{counter}{suffix}"
-        if not os.path.exists(candidate):
-            return str(candidate)
-        counter += 1
+def kind_of(name: str) -> str:
+    ext = os.path.splitext(name)[1].lower()
+    if ext in IMAGE_EXTS:
+        return "image"
+    if ext in VIDEO_EXTS:
+        return "video"
+    if ext in MOTION_EXTS:
+        return "motion"
+    if ext == "":
+        return "noext"
+    return "other"
 
 
-def _free_bytes(path: str) -> int:
-    return shutil.disk_usage(path).free
-
-
-def _check_disk_space(zip_path: str, extract_to: str) -> bool:
-    zip_size  = os.path.getsize(zip_path)
-    needed    = int(zip_size * DISK_HEADROOM_FACTOR)
-    available = _free_bytes(extract_to)
-    if available < needed:
-        logger.error(
-            "Not enough disk space to extract %s. Need ~%d GB, have %d GB free.",
-            os.path.basename(zip_path), needed // (1024**3), available // (1024**3),
-        )
-        return False
-    return True
-
-
-def _validate_zip(zip_path: str) -> bool:
-    try:
-        with zipfile.ZipFile(zip_path, "r") as zf:
-            bad = zf.testzip()
-        if bad is not None:
-            logger.error("Corrupt entry in %s: %s", os.path.basename(zip_path), bad)
-            return False
-        return True
-    except zipfile.BadZipFile as exc:
-        logger.error("Bad zip file %s: %s", os.path.basename(zip_path), exc)
-        return False
-    except Exception as exc:
-        logger.error("Unexpected error validating %s (%s: %s)", os.path.basename(zip_path), type(exc).__name__, exc)
-        return False
-
-
-# ---------------------------------------------------------------------------
-# Date detection — 4-level fallback
-# ---------------------------------------------------------------------------
-
-def _date_from_json(json_path: str) -> str | None:
-    """Level 1 & 2: read photoTakenTime / creationTime from a JSON sidecar."""
-    try:
-        with open(json_path, "r", encoding="utf-8") as f:
-            metadata = json.load(f)
-        for key in ("photoTakenTime", "creationTime"):
-            ts_str = metadata.get(key, {}).get("timestamp")
-            if ts_str:
-                ts = int(ts_str)
-                if ts > 0:
-                    return datetime.fromtimestamp(ts).strftime("%Y_%m_%d")
-    except Exception:
-        pass
-    return None
-
-
-def _date_from_filename(filename: str) -> str | None:
-    """Level 3: parse YYYYMMDD from filenames like IMG_20180701_095141.jpg."""
-    m = _FILENAME_DATE_RE.search(filename)
-    if m:
-        year, month, day = m.group(1), m.group(2), m.group(3)
-        y = int(year)
-        if 1990 <= y <= 2030:
-            return f"{year}_{month}_{day}"
-    return None
-
-
-def _date_from_folder(zip_internal_path: str) -> str | None:
-    """Level 4: extract year from folder name like 'Photos from 2022' → 2022_01_01."""
-    m = _FOLDER_YEAR_RE.search(zip_internal_path)
-    if m:
-        year = m.group(1)
-        y = int(year)
-        if 1990 <= y <= 2030:
-            return f"{year}_01_01"
-    return None
-
-
-# ---------------------------------------------------------------------------
-# Build sidecar index for a folder
-# ---------------------------------------------------------------------------
-
-def _build_sidecar_index(search_path: str) -> dict:
-    """
-    Walk search_path and build a lookup:
-      {(folder, stem): [list of json paths]}
-
-    This allows us to match IMG_2635.MP4 to IMG_2635.JPG.supplemental-metadata.json
-    by sharing the stem 'IMG_2635'.
-    """
-    index = defaultdict(list)
-    for root, _dirs, files in os.walk(search_path):
-        for f in files:
-            if not f.lower().endswith(".json"):
+def date_from_filename(name: str) -> datetime | None:
+    """Local wall-clock datetime embedded in the filename, if any."""
+    for rx in (_FN_DT_RE, _FN_DT_DASH_RE):
+        m = rx.search(name)
+        if m:
+            try:
+                dt = datetime(*map(int, m.groups()))
+            except ValueError:
                 continue
-            full_path = os.path.join(root, f)
-            # Extract stem: remove .supplemental-metadata.json or .json suffix
-            cleaned = f
-            if cleaned.endswith(".supplemental-metadata.json"):
-                cleaned = cleaned[:-len(".supplemental-metadata.json")]
-            elif cleaned.endswith(".json"):
-                cleaned = cleaned[:-len(".json")]
-            stem = os.path.splitext(cleaned)[0]
-            index[(root, stem)].append(full_path)
-    return index
+            if 1990 <= dt.year <= 2035:
+                return dt
+    return None
 
 
 # ---------------------------------------------------------------------------
-# Core processing for one archive
+# Sidecar index (all zips)
 # ---------------------------------------------------------------------------
+def list_zips(takeout_path: str) -> list[str]:
+    return sorted(glob.glob(os.path.join(takeout_path, "*.zip")))
 
-def process_single_archive(zip_file: str) -> bool:
-    archive_name = os.path.basename(zip_file)
-    safe_stem    = _safe_folder_name(archive_name.replace(".zip", ""))
-    temp_path    = os.path.join(TAKEOUT_PATH, f"temp_extract_{safe_stem}")
 
-    logger.info("=" * 60)
-    logger.info("Archive: %s", archive_name)
-
-    # 1. Validate
-    logger.info("Validating archive integrity…")
-    if not _validate_zip(zip_file):
-        return False
-
-    # 2. Disk space
-    logger.info("Checking disk space…")
-    if not _check_disk_space(zip_file, TAKEOUT_PATH):
-        return False
-
-    # 3. Extract
-    try:
-        logger.info("Extracting…")
-        with zipfile.ZipFile(zip_file, "r") as zf:
-            zf.extractall(temp_path)
-            # Count expected media files from the zip listing
-            zip_media_count = sum(
-                1 for n in zf.namelist()
-                if os.path.splitext(n.lower())[1] in MEDIA_EXTS
-            )
-        logger.info("Extraction complete. Expected media files: %d", zip_media_count)
-    except Exception as exc:
-        logger.error("Extraction failed (%s: %s).", type(exc).__name__, exc)
-        shutil.rmtree(temp_path, ignore_errors=True)
-        return False
-
-    # 4. Build sidecar index for the entire extracted tree
-    logger.info("Building JSON sidecar index…")
-    sidecar_index = _build_sidecar_index(temp_path)
-    logger.info("Sidecar index: %d unique (folder, stem) entries.", len(sidecar_index))
-
-    # 5. Find all media files
-    media_files = []
-    for root, _dirs, files in os.walk(temp_path):
-        for f in files:
-            if os.path.splitext(f.lower())[1] in MEDIA_EXTS:
-                media_files.append(os.path.join(root, f))
-
-    logger.info("Found %d media files to organise.", len(media_files))
-
-    # 6. Organise
-    manifest = {}  # source_zip_path → dest_path
-    date_method_counts = {"json_exact": 0, "json_stem": 0, "filename": 0, "folder": 0, "unknown": 0}
-    processed_count = 0
-    total = len(media_files)
-
-    for i, media_path in enumerate(media_files, 1):
-        if i % 500 == 0 or i == total:
-            logger.info("  Progress: %d/%d (%.1f%%)", i, total, i / total * 100)
-
+def load_sidecars(zips: list[str]) -> tuple[dict, dict]:
+    """
+    Returns (members, sidecars):
+      members  = {zip_name: [(member_name, size), ...]}
+      sidecars = {member_name: parsed_json}
+    Sidecar contents are cached per zip (keyed by size + mtime).
+    """
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    cache = {}
+    if os.path.exists(SIDECAR_CACHE):
         try:
-            media_basename = os.path.basename(media_path)
-            media_dir = os.path.dirname(media_path)
-            media_stem = os.path.splitext(media_basename)[0]
-
-            # Compute the original zip-internal path for the manifest
-            zip_internal = os.path.relpath(media_path, temp_path)
-
-            # --- Level 1: Exact JSON sidecar ---
-            date_folder = None
-            matched_json = None
-
-            exact_suppl = media_path + ".supplemental-metadata.json"
-            exact_json  = media_path + ".json"
-
-            if os.path.exists(exact_suppl):
-                date_folder = _date_from_json(exact_suppl)
-                matched_json = exact_suppl
-                if date_folder:
-                    date_method_counts["json_exact"] += 1
-
-            if not date_folder and os.path.exists(exact_json):
-                date_folder = _date_from_json(exact_json)
-                matched_json = exact_json
-                if date_folder:
-                    date_method_counts["json_exact"] += 1
-
-            # --- Level 2: Stem-match sidecar ---
-            if not date_folder:
-                stem_jsons = sidecar_index.get((media_dir, media_stem), [])
-                for sj in stem_jsons:
-                    date_folder = _date_from_json(sj)
-                    if date_folder:
-                        matched_json = sj
-                        date_method_counts["json_stem"] += 1
-                        break
-
-            # --- Level 3: Filename date pattern ---
-            if not date_folder:
-                date_folder = _date_from_filename(media_basename)
-                if date_folder:
-                    date_method_counts["filename"] += 1
-
-            # --- Level 4: Folder name year ---
-            if not date_folder:
-                date_folder = _date_from_folder(zip_internal)
-                if date_folder:
-                    date_method_counts["folder"] += 1
-
-            # --- Fallback: unknown ---
-            if not date_folder:
-                date_folder = "unknown_date"
-                date_method_counts["unknown"] += 1
-
-            # --- Move media file ---
-            dest_dir = Path(PROCESSING_PATH) / date_folder
-            dest_dir.mkdir(parents=True, exist_ok=True)
-
-            dest_media = _unique_dest(str(dest_dir / media_basename))
-            shutil.move(media_path, dest_media)
-            manifest[zip_internal] = os.path.relpath(dest_media, PROCESSING_PATH)
-
-            # --- Move matched JSON sidecar alongside media ---
-            if matched_json and os.path.exists(matched_json):
-                json_basename = os.path.basename(matched_json)
-                dest_json = _unique_dest(str(dest_dir / json_basename))
-                shutil.move(matched_json, dest_json)
-
-            processed_count += 1
-
+            with open(SIDECAR_CACHE, encoding="utf-8") as f:
+                cache = json.load(f)
         except Exception as exc:
-            logger.error("Error processing %s (%s: %s) – skipping.", media_path, type(exc).__name__, exc)
+            logger.warning("Sidecar cache unreadable (%s) – rebuilding.", exc)
 
-    logger.info("Organised %d/%d media files.", processed_count, total)
-    logger.info("Date method breakdown: %s", dict(date_method_counts))
+    members, sidecars, dirty = {}, {}, False
+    for zp in zips:
+        zname = os.path.basename(zp)
+        st = os.stat(zp)
+        key = f"{st.st_size}:{int(st.st_mtime)}"
+        entry = cache.get(zname)
+        if entry and entry.get("key") == key:
+            members[zname] = [tuple(x) for x in entry["members"]]
+            sidecars.update(entry["sidecars"])
+            continue
 
-    # 7. Write manifest
+        logger.info("Indexing %s …", zname)
+        zmembers, zsidecars = [], {}
+        with zipfile.ZipFile(zp) as zf:
+            for info in zf.infolist():
+                if info.is_dir():
+                    continue
+                zmembers.append((info.filename, info.file_size))
+                if info.filename.lower().endswith(".json") and info.file_size < 1_000_000:
+                    try:
+                        zsidecars[info.filename] = json.loads(zf.read(info))
+                    except Exception:
+                        pass
+        cache[zname] = {"key": key, "members": zmembers, "sidecars": zsidecars}
+        members[zname] = zmembers
+        sidecars.update(zsidecars)
+        dirty = True
+        logger.info("  %d members, %d sidecars", len(zmembers), len(zsidecars))
+
+    if dirty:
+        with open(SIDECAR_CACHE, "w", encoding="utf-8") as f:
+            json.dump(cache, f)
+    return members, sidecars
+
+
+def sidecar_media_key(json_basename: str) -> tuple[str, int] | None:
+    """
+    'IMG_1.jpg.supplemental-metadata(1).json' -> ('IMG_1.jpg', 1)
+    'PXL_x.NIGHT.jpg.supplemental-.json'      -> ('PXL_x.NIGHT.jpg', 0)
+    'Screenshot_..._com.solante.json'         -> ('Screenshot_..._com.solante', 0)  (truncated)
+    """
+    m = _JSON_DUP_RE.match(json_basename)
+    if not m:
+        return None
+    body, n = m.group("body"), int(m.group("n") or 0)
+    head, dot, tail = body.rpartition(".")
+    if dot and SUPPLEMENTAL.startswith(tail) and head:
+        body = head
+    return body, n
+
+
+class SidecarIndex:
+    def __init__(self, sidecars: dict):
+        self.by_key = {}                      # (folder, media_name_lower, dup) -> member
+        self.by_title = {}                    # (folder, title_lower, dup) -> member
+        self.by_folder = defaultdict(list)    # folder -> [(key_lower, dup, member)]
+        self.data = sidecars
+        for member, meta in sidecars.items():
+            if "photoTakenTime" not in meta and "creationTime" not in meta:
+                continue  # album metadata.json, print orders, etc.
+            folder, base = os.path.split(member)
+            parsed = sidecar_media_key(base)
+            if not parsed:
+                continue
+            key, dup = parsed
+            self.by_key.setdefault((folder, key.lower(), dup), member)
+            title = meta.get("title")
+            if title:
+                self.by_title.setdefault((folder, title.lower(), dup), member)
+            self.by_folder[folder].append((key.lower(), dup, member))
+
+    def find(self, folder: str, name: str, dup: int) -> tuple[str | None, str]:
+        low = name.lower()
+        hit = self.by_key.get((folder, low, dup))
+        if hit:
+            return hit, "exact"
+        hit = self.by_title.get((folder, low, dup))
+        if hit:
+            return hit, "title"
+        # Truncated media name inside the sidecar filename.
+        best = None
+        for key, d, member in self.by_folder.get(folder, ()):
+            if d == dup and len(key) >= 25 and low.startswith(key):
+                if best is None or len(key) > len(best[0]):
+                    best = (key, member)
+        if best:
+            return best[1], "truncated"
+        return None, "none"
+
+
+# ---------------------------------------------------------------------------
+# Timezone resolution
+# ---------------------------------------------------------------------------
+_tzf = TimezoneFinder()
+
+
+def geo_of(meta: dict) -> tuple[float, float] | None:
+    for k in ("geoData", "geoDataExif"):
+        g = meta.get(k) or {}
+        lat, lon = g.get("latitude", 0.0), g.get("longitude", 0.0)
+        if lat or lon:
+            return lat, lon
+    return None
+
+
+class TzResolver:
+    """GPS timezone, else timezone of the nearest geotagged item in time."""
+
+    NEAREST_WINDOW = 3 * 24 * 3600
+
+    def __init__(self):
+        self._cache = {}
+        self._points = []   # sorted (ts, tz)
+        self._monthly = {}  # "YYYY-MM" -> dominant tz
+
+    def tz_at(self, lat: float, lon: float) -> str | None:
+        key = (round(lat, 2), round(lon, 2))
+        if key not in self._cache:
+            self._cache[key] = _tzf.timezone_at(lat=lat, lng=lon)
+        return self._cache[key]
+
+    def train(self, samples: list[tuple[int, str]]) -> None:
+        self._points = sorted(samples)
+        monthly = defaultdict(Counter)
+        for ts, tz in self._points:
+            monthly[datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m")][tz] += 1
+        self._monthly = {m: c.most_common(1)[0][0] for m, c in monthly.items()}
+
+    def guess(self, ts: int) -> tuple[str, str]:
+        if self._points:
+            i = bisect.bisect_left(self._points, (ts, ""))
+            best = None
+            for j in (i - 1, i):
+                if 0 <= j < len(self._points):
+                    d = abs(self._points[j][0] - ts)
+                    if d <= self.NEAREST_WINDOW and (best is None or d < best[0]):
+                        best = (d, self._points[j][1])
+            if best:
+                return best[1], "nearest"
+        month = datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m")
+        if month in self._monthly:
+            return self._monthly[month], "month"
+        return DEFAULT_TZ, "default"
+
+
+# ---------------------------------------------------------------------------
+# Planning
+# ---------------------------------------------------------------------------
+@dataclass
+class Item:
+    zip: str
+    member: str
+    size: int
+    kind: str
+    sidecar: str | None = None
+    match: str = "none"
+    url: str | None = None
+    taken_ts: int | None = None
+    tz: str | None = None
+    tz_source: str | None = None
+    date: str | None = None          # YYYY_MM_DD (local)
+    date_source: str | None = None
+    role: str = "visible"            # visible | companion | duplicate | trash | archived | undated
+    parent: str | None = None        # member of the photo a companion belongs to
+    dest: str | None = None          # relative to output root
+    extra: dict = field(default_factory=dict)
+
+
+def _split_dup(base: str) -> tuple[str, int]:
+    m = _DUP_RE.match(base)
+    if m:
+        return m.group("stem") + (m.group("ext") or ""), int(m.group("n"))
+    return base, 0
+
+
+def build_plan(members: dict, sidecars: dict) -> list[Item]:
+    index = SidecarIndex(sidecars)
+    tzr = TzResolver()
+
+    items: list[Item] = []
+    for zname, entries in members.items():
+        for member, size in entries:
+            if member.lower().endswith(".json") or "/Google Photos/" not in member:
+                continue
+            kind = kind_of(member)
+            if kind == "other":
+                continue
+            items.append(Item(zip=zname, member=member, size=size, kind=kind))
+
+    by_member = {it.member: it for it in items}
+    # (folder, stem_lower, dup) -> image items, used to attach live/motion clips
+    images_by_stem = defaultdict(list)
+    for it in items:
+        if it.kind == "image":
+            folder, base = os.path.split(it.member)
+            name, dup = _split_dup(base)
+            stem = os.path.splitext(name)[0].lower()
+            images_by_stem[(folder, stem, dup)].append(it)
+
+    # 1. Sidecar matching
+    for it in items:
+        folder, base = os.path.split(it.member)
+        name, dup = _split_dup(base)
+        sc, how = index.find(folder, name, dup)
+        if not sc:
+            stem, ext = os.path.splitext(name)
+            m = _EDITED_RE.search(stem)
+            if m:
+                sc, how = index.find(folder, stem[: m.start()] + ext, dup)
+                if sc:
+                    how = "edited"
+        if sc:
+            it.sidecar, it.match = sc, how
+            meta = sidecars[sc]
+            it.url = meta.get("url")
+            ts = int((meta.get("photoTakenTime") or {}).get("timestamp") or 0)
+            if ts <= 0:
+                ts = int((meta.get("creationTime") or {}).get("timestamp") or 0)
+            it.taken_ts = ts or None
+            if meta.get("trashed") or folder.endswith("/Trash"):
+                it.role = "trash"
+            elif meta.get("archived"):
+                it.role = "archived"
+
+    # 2. Live photo / motion photo clips without their own sidecar.
+    # "IMG_1(1).MP4" can be the clip of a second photo sharing the stem
+    # (IMG_1.HEIC + IMG_1.JPG), so fall back to dup 0 and prefer unclaimed photos.
+    claimed = set()
+    clips = [it for it in items if not it.sidecar and it.kind in ("video", "motion", "noext")]
+    for it in sorted(clips, key=lambda x: _split_dup(os.path.basename(x.member))[1]):
+        folder, base = os.path.split(it.member)
+        name, dup = _split_dup(base)
+        stem = (os.path.splitext(name)[0] if it.kind != "noext" else name).lower()
+        cands = []
+        for d in dict.fromkeys((dup, 0)):
+            cands = images_by_stem.get((folder, stem, d), [])
+            if not cands and it.kind == "motion":
+                # PXL_x.MP pairs with PXL_x.MP.jpg
+                cands = images_by_stem.get((folder, stem + ".mp", d), [])
+            if cands:
+                break
+        cands = [c for c in cands if c.sidecar] or cands
+        if cands:
+            parent = next((c for c in cands if c.member not in claimed), cands[0])
+            claimed.add(parent.member)
+            it.role = "companion"
+            it.parent = parent.member
+            it.match = "companion"
+
+    # 3. "-edited" wins; the original becomes a hidden companion
+    edited_urls = {it.url for it in items if it.match == "edited" and it.url}
+    for it in items:
+        if it.url in edited_urls and it.match != "edited" and it.role == "visible":
+            it.role = "companion"
+            it.extra["pre_edit_original"] = True
+
+    # 4. Timezones: learn from geotagged items, then resolve every timestamp
+    samples = []
+    for it in items:
+        if it.taken_ts and it.sidecar:
+            g = geo_of(sidecars[it.sidecar])
+            if g:
+                tz = tzr.tz_at(*g)
+                if tz:
+                    it.tz, it.tz_source = tz, "gps"
+                    samples.append((it.taken_ts, tz))
+    tzr.train(samples)
+
+    for it in items:
+        if it.taken_ts:
+            if not it.tz:
+                it.tz, it.tz_source = tzr.guess(it.taken_ts)
+            local = datetime.fromtimestamp(it.taken_ts, ZoneInfo(it.tz))
+            it.date = local.strftime("%Y_%m_%d")
+            it.date_source = "json"
+
+    for it in items:
+        if it.role == "companion" and it.parent and not it.date:
+            p = by_member[it.parent]
+            it.date, it.date_source, it.tz, it.taken_ts = p.date, "parent", p.tz, p.taken_ts
+
+    for it in items:
+        if not it.date:
+            dt = date_from_filename(os.path.basename(it.member))
+            if dt:
+                it.date, it.date_source = dt.strftime("%Y_%m_%d"), "filename"
+            elif it.role == "visible":
+                it.role, it.date_source = "undated", "none"
+
+    # 5. De-duplicate album copies. Prefer "Photos from YYYY" as canonical.
+    def canon_rank(it: Item) -> tuple:
+        folder = os.path.basename(os.path.dirname(it.member))
+        return (0 if _YEAR_FOLDER_RE.match(folder) else 1, it.member)
+
+    groups = defaultdict(list)
+    for it in items:
+        if it.role == "companion" and it.parent:
+            pu = by_member[it.parent].url
+            key = ("c", pu, os.path.basename(it.member).lower()) if pu else ("m", it.member)
+        elif it.url:
+            key = ("u", it.url, it.match == "edited", it.kind)
+        else:
+            key = ("n", os.path.basename(it.member).lower(), it.size)
+        groups[key].append(it)
+    for group in groups.values():
+        if len(group) > 1:
+            group.sort(key=canon_rank)
+            for dup_it in group[1:]:
+                dup_it.extra["duplicate_of"] = group[0].member
+                dup_it.role = "duplicate"
+
+    assign_destinations(items)
+    return items
+
+
+def assign_destinations(items: list[Item]) -> None:
+    used = set()
+
+    def unique(rel: str) -> str:
+        if rel.lower() not in used:
+            used.add(rel.lower())
+            return rel
+        root, ext = os.path.splitext(rel)
+        n = 1
+        while f"{root}_{n}{ext}".lower() in used:
+            n += 1
+        out = f"{root}_{n}{ext}"
+        used.add(out.lower())
+        return out
+
+    for it in sorted(items, key=lambda x: x.member):
+        base = os.path.basename(it.member)
+        if it.role == "visible":
+            it.dest = unique(f"{it.date}/{base}")
+        elif it.role == "companion":
+            it.dest = unique(f"{it.date or '_undated'}/.live/{base}")
+        elif it.role == "archived":
+            it.dest = unique(f"_archived/{it.date or 'undated'}/{base}")
+        elif it.role == "trash":
+            it.dest = unique(f"_trash/{base}")
+        elif it.role == "undated":
+            it.dest = unique(f"_undated/{base}")
+        else:
+            it.dest = None
+
+
+def plan_report(items: list[Item]) -> dict:
+    roles = Counter(it.role for it in items)
+    report = {
+        "media_members": len(items),
+        "roles": dict(roles),
+        "match": dict(Counter(it.match for it in items)),
+        "date_source_visible": dict(Counter(it.date_source for it in items if it.role == "visible")),
+        "tz_source_visible": dict(Counter(it.tz_source for it in items if it.role == "visible")),
+        "kinds_visible": dict(Counter(it.kind for it in items if it.role == "visible")),
+        "bytes_to_write_gb": round(sum(it.size for it in items if it.dest) / 1024**3, 1),
+    }
+    # Cross-check: local date vs date embedded in filename (camera wall clock)
+    agree = disagree = 0
+    for it in items:
+        if it.role != "visible" or it.date_source != "json":
+            continue
+        dt = date_from_filename(os.path.basename(it.member))
+        if dt:
+            if dt.strftime("%Y_%m_%d") == it.date:
+                agree += 1
+            else:
+                disagree += 1
+    report["filename_date_check"] = {"agree": agree, "disagree": disagree}
+    return report
+
+
+# ---------------------------------------------------------------------------
+# Execution
+# ---------------------------------------------------------------------------
+_MAGIC = [(b"ftypqt", ".mov"), (b"ftypheic", ".heic"), (b"ftypmif1", ".heic"),
+          (b"ftypisom", ".mp4"), (b"ftypmp42", ".mp4"), (b"\xff\xd8\xff", ".jpg"),
+          (b"\x89PNG", ".png")]
+
+
+def sniff_ext(head: bytes) -> str:
+    for magic, ext in _MAGIC:
+        if magic in head[:16]:
+            return ext
+    return ""
+
+
+def execute(items: list[Item], out_root: str, takeout_path: str) -> None:
+    os.makedirs(out_root, exist_ok=True)
+    todo = defaultdict(list)
+    for it in items:
+        if it.dest:
+            todo[it.zip].append(it)
+
+    written = skipped = failed = 0
+    for zname in sorted(todo):
+        batch = sorted(todo[zname], key=lambda x: x.member)
+        logger.info("=" * 60)
+        logger.info("Extracting %d items from %s", len(batch), zname)
+        with zipfile.ZipFile(os.path.join(takeout_path, zname)) as zf:
+            for i, it in enumerate(batch, 1):
+                if i % 2000 == 0:
+                    logger.info("  %s: %d/%d", zname, i, len(batch))
+                dest = os.path.join(out_root, it.dest)
+                try:
+                    if os.path.exists(dest) and os.path.getsize(dest) == it.size:
+                        skipped += 1
+                        continue
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
+                    tmp = dest + ".part"
+                    with zf.open(it.member) as src, open(tmp, "wb") as dst:
+                        shutil.copyfileobj(src, dst, 4 * 1024 * 1024)
+                    os.replace(tmp, dest)
+                    if it.taken_ts:
+                        os.utime(dest, (it.taken_ts, it.taken_ts))
+                    written += 1
+                except Exception as exc:
+                    failed += 1
+                    logger.error("Failed %s -> %s (%s: %s)", it.member, it.dest, type(exc).__name__, exc)
+
+    # Extensionless clips: add a real extension so players recognise them
+    for it in items:
+        if it.dest and it.kind == "noext":
+            dest = os.path.join(out_root, it.dest)
+            if os.path.exists(dest):
+                with open(dest, "rb") as f:
+                    ext = sniff_ext(f.read(32))
+                if ext:
+                    os.replace(dest, dest + ext)
+                    it.dest += ext
+
+    manifest_dir = os.path.join(out_root, ".manifests")
+    os.makedirs(manifest_dir, exist_ok=True)
+    with open(os.path.join(manifest_dir, "index.json"), "w", encoding="utf-8") as f:
+        json.dump({"generated": datetime.now().isoformat(),
+                   "report": plan_report(items),
+                   "items": [asdict(it) for it in items]}, f)
+    logger.info("Written %d, already present %d, failed %d", written, skipped, failed)
+    if failed:
+        sys.exit(2)
+
+
+# ---------------------------------------------------------------------------
+# Sampling / verification against EXIF
+# ---------------------------------------------------------------------------
+def exif_dates(paths: list[str]) -> dict:
+    if not paths:
+        return {}
+    cmd = ["exiftool", "-json", "-q", "-DateTimeOriginal", "-CreateDate",
+           "-OffsetTimeOriginal", "-api", "QuickTimeUTC=0"] + paths
+    res = subprocess.run(cmd, capture_output=True, text=True)
     try:
-        os.makedirs(MANIFEST_DIR, exist_ok=True)
-        manifest_path = os.path.join(MANIFEST_DIR, f"{safe_stem}.json")
-        manifest_data = {
-            "archive": archive_name,
-            "expected_media": zip_media_count,
-            "processed_media": processed_count,
-            "date_methods": dict(date_method_counts),
-            "files": manifest,
-        }
-        with open(manifest_path, "w", encoding="utf-8") as f:
-            json.dump(manifest_data, f, indent=2)
-        logger.info("Manifest written: %s", manifest_path)
-    except Exception as exc:
-        logger.error("Could not write manifest (%s: %s).", type(exc).__name__, exc)
+        return {d["SourceFile"]: d for d in json.loads(res.stdout or "[]")}
+    except json.JSONDecodeError:
+        return {}
 
-    # 8. Verify counts
-    if processed_count != zip_media_count:
-        logger.warning(
-            "⚠️  COUNT MISMATCH for %s: zip had %d media, processed %d (diff=%d)",
-            archive_name, zip_media_count, processed_count, zip_media_count - processed_count,
-        )
-    else:
-        logger.info("✅ Count verified: %d/%d media files processed.", processed_count, zip_media_count)
 
-    # 9. Cleanup
-    logger.info("Cleaning up extracted files…")
-    shutil.rmtree(temp_path, ignore_errors=True)
+def sample(items: list[Item], n: int, takeout_path: str, seed: int) -> None:
+    rng = random.Random(seed)
+    visible = [it for it in items if it.role == "visible"]
+    picks = rng.sample(visible, min(n, len(visible)))
+    hidden = [it for it in items if it.role in ("companion", "duplicate", "trash", "archived")]
+    picks_hidden = rng.sample(hidden, min(10, len(hidden)))
 
-    logger.info("Archive %s complete.", archive_name)
-    return True
+    tmpdir = tempfile.mkdtemp(prefix="takeout_sample_")
+    paths = {}
+    by_zip = defaultdict(list)
+    for it in picks:
+        by_zip[it.zip].append(it)
+    for zname, its in by_zip.items():
+        with zipfile.ZipFile(os.path.join(takeout_path, zname)) as zf:
+            for it in its:
+                p = os.path.join(tmpdir, f"{len(paths):03d}_{os.path.basename(it.member)}")
+                with zf.open(it.member) as src, open(p, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+                paths[it.member] = p
+    exif = exif_dates(list(paths.values()))
+
+    ok = mismatch = noexif = 0
+    print(f"\n{'#':>2}  {'file':<40} {'json UTC':<17} {'tz':<18} {'date':<10} {'exif local':<19} verdict")
+    for i, it in enumerate(picks, 1):
+        e = exif.get(paths[it.member], {})
+        raw = e.get("DateTimeOriginal") or e.get("CreateDate") or ""
+        exif_date = raw[:10].replace(":", "_") if raw and not raw.startswith("0000") else ""
+        utc = datetime.fromtimestamp(it.taken_ts, timezone.utc).strftime("%Y-%m-%d %H:%M") if it.taken_ts else "-"
+        if not exif_date:
+            verdict, noexif = "no-exif", noexif + 1
+        elif exif_date == it.date:
+            verdict, ok = "OK", ok + 1
+        else:
+            verdict, mismatch = "DIFF", mismatch + 1
+        print(f"{i:>2}  {os.path.basename(it.member)[:40]:<40} {utc:<17} "
+              f"{(it.tz or '-')[:12]+'/'+(it.tz_source or '-')[:5]:<18} {it.date:<10} {raw[:19]:<19} {verdict}")
+    print(f"\nEXIF agrees: {ok}, differs: {mismatch}, no EXIF date: {noexif}")
+
+    print("\nHidden from the timeline (sample):")
+    for it in picks_hidden:
+        why = it.role
+        if it.role == "duplicate":
+            why += f" of {it.extra.get('duplicate_of')}"
+        elif it.role == "companion":
+            why += " (pre-edit original)" if it.extra.get("pre_edit_original") else f" of {os.path.basename(it.parent or '')}"
+        print(f"  {it.member}  ->  {why}")
+    shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 def main() -> None:
-    logger.info("=" * 60)
-    logger.info("Google Takeout processor v2 started at %s", datetime.now().isoformat())
-    logger.info("TAKEOUT_PATH    : %s", TAKEOUT_PATH)
-    logger.info("PROCESSING_PATH : %s", PROCESSING_PATH)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("command", choices=["plan", "sample", "run"])
+    ap.add_argument("--takeout", default=TAKEOUT_PATH)
+    ap.add_argument("--out", default=PROCESSING_PATH)
+    ap.add_argument("-n", type=int, default=50)
+    ap.add_argument("--seed", type=int, default=42)
+    args = ap.parse_args()
 
-    if not os.path.exists(TAKEOUT_PATH):
-        logger.error("Takeout folder does not exist: %s → aborting.", TAKEOUT_PATH)
+    zips = list_zips(args.takeout)
+    if not zips:
+        logger.error("No zip archives in %s", args.takeout)
         sys.exit(1)
+    logger.info("Takeout processor v3: %d zip(s) in %s", len(zips), args.takeout)
 
-    free_gb = _free_bytes(TAKEOUT_PATH) / (1024**3)
-    logger.info("Free space: %.1f GB", free_gb)
+    members, sidecars = load_sidecars(zips)
+    items = build_plan(members, sidecars)
+    report = plan_report(items)
+    logger.info("Plan: %s", json.dumps(report, indent=2))
 
-    Path(PROCESSING_PATH).mkdir(parents=True, exist_ok=True)
-
-    zip_files = sorted(glob.glob(os.path.join(TAKEOUT_PATH, "*.zip")))
-    logger.info("Found %d zip archive(s).", len(zip_files))
-    for zf in zip_files:
-        logger.info("  %-60s  %.2f GB", os.path.basename(zf), os.path.getsize(zf) / (1024**3))
-
-    if not zip_files:
-        logger.warning("No zip archives found. Nothing to do.")
-        return
-
-    already_done = _load_state()
-    pending = [z for z in zip_files if os.path.basename(z) not in already_done]
-
-    if len(zip_files) - len(pending) > 0:
-        logger.info("Skipping %d already-processed archive(s).", len(zip_files) - len(pending))
-    logger.info("Archives to process: %d", len(pending))
-
-    successful = 0
-    failed_archives = []
-    grand_total_methods = {"json_exact": 0, "json_stem": 0, "filename": 0, "folder": 0, "unknown": 0}
-
-    for i, zip_file in enumerate(pending, 1):
-        name = os.path.basename(zip_file)
-        logger.info("Processing archive %d/%d: %s", i, len(pending), name)
-
-        if process_single_archive(zip_file):
-            successful += 1
-            already_done.add(name)
-            _save_state(already_done)
-
-            # Accumulate method counts from manifest
-            try:
-                safe = _safe_folder_name(name.replace(".zip", ""))
-                mf = os.path.join(MANIFEST_DIR, f"{safe}.json")
-                with open(mf) as f:
-                    mdata = json.load(f)
-                for k, v in mdata.get("date_methods", {}).items():
-                    grand_total_methods[k] = grand_total_methods.get(k, 0) + v
-            except Exception:
-                pass
-        else:
-            failed_archives.append(name)
-            logger.error("Archive FAILED: %s", name)
-
-    logger.info("=" * 60)
-    logger.info("FINAL SUMMARY")
-    logger.info("  Archives processed: %d/%d", successful, len(pending))
-    logger.info("  Date method totals: %s", grand_total_methods)
-    if failed_archives:
-        logger.error("  Failed archives (%d): %s", len(failed_archives), failed_archives)
-
-    # Count output
-    total_output = 0
-    folder_count = 0
-    for d in os.listdir(PROCESSING_PATH):
-        dp = os.path.join(PROCESSING_PATH, d)
-        if os.path.isdir(dp) and d not in (".manifests", ".thumb_cache"):
-            count = sum(1 for f in os.listdir(dp) if os.path.splitext(f.lower())[1] in MEDIA_EXTS)
-            if count > 0:
-                folder_count += 1
-                total_output += count
-
-    logger.info("  Output: %d media files across %d date folders", total_output, folder_count)
-    logger.info("Processor finished at %s", datetime.now().isoformat())
+    if args.command == "sample":
+        sample(items, args.n, args.takeout, args.seed)
+    elif args.command == "run":
+        free_gb = shutil.disk_usage(os.path.dirname(os.path.abspath(args.out)) or "/").free / 1024**3
+        if free_gb < report["bytes_to_write_gb"] * 1.02:
+            logger.error("Not enough space: need %.1f GB, have %.1f GB", report["bytes_to_write_gb"], free_gb)
+            sys.exit(1)
+        execute(items, args.out, args.takeout)
 
 
 if __name__ == "__main__":

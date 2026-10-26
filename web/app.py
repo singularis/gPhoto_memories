@@ -13,6 +13,9 @@ import json
 
 picFolder = '/photos'
 CACHE_DIR = '/photos/.thumb_cache'
+# H.264 MP4 stand-ins for clips Chrome cannot play (HEVC .mov and other odd containers).
+# Filled by scripts/takeout_processor/transcode_videos.py. Key is md5(relpath:size).
+VIDEO_CACHE_DIR = '/photos/.video_cache'
 
 # WARNING only — no debug spam in prod
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -25,8 +28,9 @@ app.config['DEBUG'] = False
 setup_metrics(app)
 register_heif_opener()
 
-# Pre-create thumbnail cache directory (on the mounted volume — survives pod restarts)
+# Pre-create cache directories (on the mounted volume — survive pod restarts)
 os.makedirs(CACHE_DIR, exist_ok=True)
+os.makedirs(VIDEO_CACHE_DIR, exist_ok=True)
 
 CONTENT_TYPE_LATEST = str('text/plain; version=0.0.4; charset=utf-8')
 
@@ -65,6 +69,12 @@ def _get_media_for_date(target_date):
             logging.error("Error reading %s: %s", past_path, e)
 
     return media, years_found
+
+
+def video_cache_path(filename, size):
+    """Path of the browser-safe MP4 for this video, if one has been built."""
+    key = hashlib.md5(f"{filename}:{size}".encode()).hexdigest()
+    return os.path.join(VIDEO_CACHE_DIR, f"{key}.mp4")
 
 
 def _thumb_cache_path(filename, width, height, quality, cb=None):
@@ -129,6 +139,20 @@ def serve_photos(filename):
     height  = request.args.get('h', type=int)
     quality = request.args.get('q', 85, type=int)
 
+    file_path = os.path.join('/photos', filename)
+    if not os.path.exists(file_path):
+        return "Photo not found", 404
+
+    fl = filename.lower()
+
+    # Video: serve the H.264 cache when this clip had to be converted.
+    if fl.endswith(VIDEO_EXTS):
+        cached = video_cache_path(filename, os.path.getsize(file_path))
+        if os.path.isfile(cached) and os.path.getsize(cached) > 0:
+            return send_from_directory(VIDEO_CACHE_DIR, os.path.basename(cached),
+                                       mimetype='video/mp4', conditional=True)
+        return send_from_directory('/photos', filename, conditional=True)
+
     # Auto-shrink for mobile
     ua = request.headers.get('User-Agent', '').lower()
     is_mobile = any(d in ua for d in ('mobile', 'android', 'iphone', 'ipad', 'ipod'))
@@ -137,17 +161,6 @@ def serve_photos(filename):
 
     # No resize needed — serve raw file
     if not width and not height:
-        return send_from_directory('/photos', filename)
-
-    file_path = os.path.join('/photos', filename)
-
-    if not os.path.exists(file_path):
-        return "Photo not found", 404
-
-    fl = filename.lower()
-
-    # Non-image files (videos etc.) — pass through
-    if not fl.endswith(IMAGE_EXTS):
         return send_from_directory('/photos', filename)
 
     # ── Thumbnail cache hit ───────────────────────────────────────────────────
@@ -197,6 +210,7 @@ def serve_photos(filename):
 
                 # Persist to cache (best-effort — ignore write errors)
                 try:
+                    os.makedirs(CACHE_DIR, exist_ok=True)
                     with open(cache_path, 'wb') as cf:
                         cf.write(img_bytes)
                 except Exception as cache_err:

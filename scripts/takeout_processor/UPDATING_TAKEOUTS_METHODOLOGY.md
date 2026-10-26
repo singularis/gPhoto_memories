@@ -1,44 +1,62 @@
-# Methodology for Future Agents: Automatically Processing New Google Takeouts
+# Processing Google Takeout archives (v3)
 
-This document outlines the standard operating procedure for AI agents when the user wants to add new Google Takeout archives to their `gPhoto_memories` system. 
+`google_takeout_processor.py` turns a Google Photos Takeout (many `.zip` parts)
+into `YYYY_MM_DD/` folders that match the Google Photos timeline 1:1.
+The Flask UI (`web/app.py`) lists only files directly inside `YYYY_MM_DD/`.
 
-## Incremental Processing (The "Automatic" Way)
-The `google_takeout_processor.py` script has built-in **resume support**. This means it maintains a `processed_archives.json` file to track exactly which `.zip` files it has already fully extracted and organized. 
+## How it works
+1. **Index all zips** – every JSON sidecar from every zip is read (cached in
+   `.cache/sidecars.json`). Google puts most sidecars in the first zips, so a
+   photo's JSON is usually in a different zip than the photo.
+2. **Match photo ↔ JSON** – exact name, `title` field, truncated names (51-char
+   limit: `.supplemental-.json`, `.sup.json`, `..json`), `(n)` duplicates
+   (`IMG_1(1).jpg` ↔ `IMG_1.jpg.supplemental-metadata(1).json`), `-edited`.
+3. **Classify**
+   - visible → `YYYY_MM_DD/`
+   - Live Photo / Motion Photo clips and pre-edit originals → `YYYY_MM_DD/.live/`
+   - `archived: true` → `_archived/`, `trashed: true` → `_trash/`
+   - album copies of the same item (same JSON `url`) → skipped
+   - no JSON and no date in filename → `_undated/`
+4. **Date** – `photoTakenTime` (UTC) converted to local time using the GPS
+   timezone, or the timezone of the nearest geotagged photo (±3 days), or the
+   month's dominant timezone. This is the date Google Photos shows.
+5. **Extract** – members are streamed from the zips straight to their final
+   path (no temp extraction). Re-running skips files already written.
+6. **Manifest** – `.manifests/index.json` in the output records every source
+   member, its destination, sidecar, timezone and date source.
 
-When the user uploads a *new* set of Takeout files, **DO NOT do a full wipe/rewrite** of the old photos! 
+## Commands (run from this folder)
+```bash
+.venv/bin/python google_takeout_processor.py plan            # stats only, no writes
+.venv/bin/python google_takeout_processor.py sample -n 50    # extract 50 random items, compare with EXIF
+nohup .venv/bin/python google_takeout_processor.py run --out /other_hdd/google_phots_memories_new \
+    > processor_v3.log 2>&1 &
+```
+First-time setup: `python3 -m venv .venv && .venv/bin/pip install timezonefinder`.
 
-Follow these steps for an automatic, incremental update:
+## New takeout
+A Takeout is a full export, so rebuild instead of merging. Write straight into the
+folder the site serves (`/other_hdd/google_phots_all_take_for_processing`).
+Do not extract into a second folder: the zips plus one library is about 1 TB,
+and a second library pushes the disk to about 1.5 TB.
 
-### Step 1: Copy the New Archives
-1. Copy the new `.zip` files from the user's source (e.g., Windows drive) directly into the processing input directory: `/other_hdd/google_phots_all_take_out/`.
-2. **Important:** You can leave the old `.zip` files in that folder if you want. The script will automatically ignore them because their filenames are logged in `processed_archives.json`.
-
-### Step 2: Run the Processor
-1. Simply start the processor script in the background:
+1. Replace the zips in `/other_hdd/google_phots_all_take_out/` with the new ones.
+2. Run `plan` and `sample -n 50`; check the EXIF agreement and the role counts.
+3. Remove the old library (the site is empty until the new files land), then extract:
    ```bash
-   nohup python3 gphoto_take_out/google_takeout_processor.py > takeout_processor.log 2>&1 &
+   cp /other_hdd/google_phots_all_take_for_processing/settings.json /tmp/gphoto_settings.json
+   rm -rf /other_hdd/google_phots_all_take_for_processing
+   mkdir -p /other_hdd/google_phots_all_take_for_processing
+   cp /tmp/gphoto_settings.json /other_hdd/google_phots_all_take_for_processing/settings.json
+   kubectl rollout restart -n gphoto deployment/gphoto-flask-deployment
+   setsid nohup .venv/bin/python google_takeout_processor.py run \
+     --out /other_hdd/google_phots_all_take_for_processing \
+     > processor_v3.log 2>&1 < /dev/null &
    ```
-2. **What the script will do automatically:**
-   - It will read `processed_archives.json`.
-   - It will skip any `.zip` files it has seen before.
-   - It will only extract the *new* `.zip` files.
-   - It will parse the dates and merge the new photos directly into the existing `/other_hdd/google_phots_all_take_for_processing/` directory structure.
-   - It will add the new `.zip` filenames to `processed_archives.json` when finished.
-
-### Step 3: Verify the App
-1. The Kubernetes Pod (`gphoto-flask-deployment`) is bind-mounted to the output directory. 
-2. As soon as the processor drops new folders/files in the output directory, the Flask app will instantly have access to them. No pod restart is required for *incremental* folder additions (unless the container lost its volume mount context, as seen in previous edge cases).
-
----
-
-## Complete Wipe & Restart (The "Fresh Start" Way)
-*Only use this method if the user explicitly asks to wipe everything and start from zero (e.g., if their previous takeout was flawed).*
-
-1. **Kill running jobs:** `pkill -f google_takeout_processor.py`
-2. **Wipe temporary extractions:** `rm -rf /other_hdd/google_phots_all_take_out/temp_extract_*`
-3. **Wipe processed output:** `rm -rf /other_hdd/google_phots_all_take_for_processing/*` (Safest way: `kubectl exec -n gphoto <POD_NAME> -- sh -c 'rm -rf /photos/* /photos/.thumb_cache'`)
-4. **CRITICAL:** You **must** delete the resume state file so the script forgets what it has processed: 
+4. The pod must be restarted after the folder is recreated, otherwise it keeps
+   the old deleted directory. Files written after that restart show up immediately.
+5. Make iPhone videos play in Chrome (HEVC `.mov` does not). This writes H.264
+   copies into `.video_cache/` and leaves the originals in place:
    ```bash
-   rm -f gphoto_take_out/processed_archives.json
+   setsid nohup .venv/bin/python transcode_videos.py > transcode_videos.log 2>&1 < /dev/null &
    ```
-5. Copy the new files over and start the processor as usual.

@@ -19,6 +19,9 @@ spec:
         - name: gphoto-flask
           image: singularis314/gphoto:0.8
           imagePullPolicy: Always
+          env:
+            - name: TZ
+              value: Europe/London
           ports:
             - containerPort: 5000
               name: gphoto-flask

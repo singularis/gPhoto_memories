@@ -49,7 +49,7 @@
         <div class="grid">
             {% for img in media['images'] if img.year == year %}
             <div class="grid-item">
-                <img data-seqsrc="/{{ img.path }}?w={{ img_w }}&q={{ img_q }}" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" data-fullsrc="/{{ img.path }}" alt="" class="seq-img" onclick="openLB(this)">
+                <img data-path="/{{ img.path }}" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="" class="seq-img" onclick="openLB(this)">
                 <button class="rotate-btn" onclick="rotateImg(this, '{{ img.path }}', event)">↻</button>
             </div>
             {% endfor %}
@@ -155,12 +155,40 @@
 const IMG_W = {{ img_w }};
 const IMG_Q = {{ img_q }};
 /* ─── state ─────────────────────────────────────────────── */
-let calDate = new Date();
-let currentViewDate = new Date("{{ date.strftime('%Y-%m-%dT12:00:00') }}");
+/* Use numeric Date ctor (local) — avoid ISO-string UTC parse quirks */
+let currentViewDate = new Date({{ date.year }}, {{ date.month - 1 }}, {{ date.day }}, 12, 0, 0);
+let calDate = new Date(currentViewDate.getFullYear(), currentViewDate.getMonth(), 1);
 let currentImageScale = 2.0;
 let currentFontScale = 2.0;
 const MONTHS = ['January','February','March','April','May','June',
                 'July','August','September','October','November','December'];
+
+function fmtDate(dt) {
+    return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+}
+function isToday(ds) {
+    return ds === fmtDate(new Date());
+}
+
+/* ─── image sizing ──────────────────────────────────────── */
+// Fixed width buckets keep the server thumbnail cache hit rate high.
+function sizeBucket(px) {
+    for (const b of [400, 800, 1200, 1920]) if (px <= b) return b;
+    return 2560;
+}
+function imgUrl(el, w, q) {
+    const cb = el.dataset.cb ? `&cb=${el.dataset.cb}` : '';
+    return `${el.dataset.path}?w=${w}&q=${q}${cb}`;
+}
+function thumbSrc(el) {
+    const cssW = el.clientWidth || IMG_W;
+    return imgUrl(el, Math.min(1200, sizeBucket(cssW * (window.devicePixelRatio || 1))), IMG_Q);
+}
+// Full-screen view goes through the resizer too: browsers other than Safari cannot show raw HEIC.
+function fullSrc(el) {
+    const screenPx = Math.max(window.innerWidth, window.innerHeight) * (window.devicePixelRatio || 1);
+    return imgUrl(el, sizeBucket(screenPx), 85);
+}
 
 /* ─── settings ──────────────────────────────────────────── */
 function applyScale(type, s) {
@@ -255,8 +283,8 @@ function loadNextSeq() {
     };
     
     // Assign src to trigger load
-    if (img.dataset.seqsrc) {
-        img.src = img.dataset.seqsrc;
+    if (img.dataset.path) {
+        img.src = thumbSrc(img);
     } else {
         loadNextSeq();
     }
@@ -271,7 +299,7 @@ let lbImageSources = [];
 function openLB(imgEl) {
     const allImgs = Array.from(document.querySelectorAll('.grid-item:not(.video-item) img'));
     currentLbIndex = allImgs.indexOf(imgEl);
-    lbImageSources = allImgs.map(el => el.getAttribute('data-fullsrc'));
+    lbImageSources = allImgs.map(fullSrc);
     if (currentLbIndex !== -1) {
         showLbIndex(currentLbIndex);
     }
@@ -351,16 +379,12 @@ function rotateLbImg(e) {
      .then(res => {
          if (res.status === 'success') {
              const cb = new Date().getTime();
-             const newSrc = `/${pathOnly}?w=${IMG_W}&q=${IMG_Q}&cb=${cb}`;
-             
-             lbImageSources[currentLbIndex] = newSrc;
-             document.querySelector('#lb img').src = newSrc;
-             
-             const allImgs = document.querySelectorAll('.grid-item img');
-             if (allImgs[currentLbIndex]) {
-                 allImgs[currentLbIndex].dataset.seqsrc = newSrc;
-                 allImgs[currentLbIndex].dataset.fullsrc = newSrc;
-                 allImgs[currentLbIndex].src = newSrc;
+             const gridImg = document.querySelectorAll('.grid-item img')[currentLbIndex];
+             if (gridImg) {
+                 gridImg.dataset.cb = cb;
+                 gridImg.src = thumbSrc(gridImg);
+                 lbImageSources[currentLbIndex] = fullSrc(gridImg);
+                 document.querySelector('#lb img').src = lbImageSources[currentLbIndex];
              }
          } else {
              alert("Error: " + res.error);
@@ -375,19 +399,16 @@ function rotateLbImg(e) {
 
 /* ─── navigation ────────────────────────────────────────── */
 function goToday() {
-    const t = new Date();
-    const ds = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
-    loadDate(ds);
+    // Main page `/` is always "today" from the server
+    window.location.href = '/';
 }
 function goPrev() {
     currentViewDate.setDate(currentViewDate.getDate() - 1);
-    const ds = `${currentViewDate.getFullYear()}-${String(currentViewDate.getMonth()+1).padStart(2,'0')}-${String(currentViewDate.getDate()).padStart(2,'0')}`;
-    loadDate(ds);
+    loadDate(fmtDate(currentViewDate));
 }
 function goNext() {
     currentViewDate.setDate(currentViewDate.getDate() + 1);
-    const ds = `${currentViewDate.getFullYear()}-${String(currentViewDate.getMonth()+1).padStart(2,'0')}-${String(currentViewDate.getDate()).padStart(2,'0')}`;
-    loadDate(ds);
+    loadDate(fmtDate(currentViewDate));
 }
 
 /* ─── video on-demand & tools ─────────────────────────────── */
@@ -409,12 +430,8 @@ function rotateImg(btn, path, e) {
          if(d.status === 'success') {
              // force reload image with cache buster
              const img = btn.previousElementSibling;
-             const cb = new Date().getTime();
-             const newSrc = `/${path}?w=${IMG_W}&q=${IMG_Q}&cb=${cb}`;
-             img.src = newSrc;
-             img.dataset.seqsrc = newSrc;
-             // also update fullsrc so lightbox sees the rotation
-             img.dataset.fullsrc = `/${path}?cb=${cb}`;
+             img.dataset.cb = new Date().getTime();
+             img.src = thumbSrc(img);
              btn.textContent = '↻';
              btn.disabled = false;
          }
@@ -426,6 +443,8 @@ function rotateImg(btn, path, e) {
 
 /* ─── calendar ──────────────────────────────────────────── */
 function openCal() {
+    // Always open on the month currently being viewed (day=1 avoids setMonth overflow)
+    calDate = new Date(currentViewDate.getFullYear(), currentViewDate.getMonth(), 1);
     const m = document.getElementById('calModal');
     m.style.display = 'block';
     requestAnimationFrame(() => m.classList.add('open'));
@@ -436,17 +455,22 @@ function closeCal() {
     m.classList.remove('open');
     setTimeout(() => m.style.display = 'none', 200);
 }
-function navMonth(d) { calDate.setMonth(calDate.getMonth() + d); buildCal(); }
+function navMonth(d) {
+    // Construct with day=1 — setMonth(Aug 31 → Sep) otherwise rolls into October
+    calDate = new Date(calDate.getFullYear(), calDate.getMonth() + d, 1);
+    buildCal();
+}
 
 function buildCal() {
-    document.getElementById('calTitle').textContent =
-        MONTHS[calDate.getMonth()] + ' ' + calDate.getFullYear();
+    const y = calDate.getFullYear();
+    const mo = calDate.getMonth();
+    document.getElementById('calTitle').textContent = MONTHS[mo] + ' ' + y;
 
     const tbody = document.getElementById('calBody');
     tbody.innerHTML = '';
 
-    const firstDay = new Date(calDate.getFullYear(), calDate.getMonth(), 1).getDay();
-    const totalDays = new Date(calDate.getFullYear(), calDate.getMonth()+1, 0).getDate();
+    const firstDay = new Date(y, mo, 1).getDay();
+    const totalDays = new Date(y, mo + 1, 0).getDate();
     const today = new Date();
 
     let dayNum = 1;
@@ -457,21 +481,21 @@ function buildCal() {
         for (let col = 0; col < 7; col++) {
             const td = document.createElement('td');
             if (row === 0 && col < firstDay) {
-                // Empty cell before first day
                 td.className = 'cal-empty';
             } else if (dayNum > totalDays) {
-                // Empty cell after last day
                 td.className = 'cal-empty';
             } else {
                 td.textContent = dayNum;
                 td.className = 'cal-day';
-                if (calDate.getFullYear() === today.getFullYear() &&
-                    calDate.getMonth() === today.getMonth() &&
+                if (y === today.getFullYear() &&
+                    mo === today.getMonth() &&
                     dayNum === today.getDate()) {
                     td.classList.add('today');
                 }
                 const d = dayNum;
-                td.onclick = () => pickDay(d);
+                const pickY = y;
+                const pickM = mo;
+                td.onclick = () => pickDay(pickY, pickM, d);
                 dayNum++;
             }
             tr.appendChild(td);
@@ -480,22 +504,33 @@ function buildCal() {
     }
 }
 
-function pickDay(d) {
-    const ds = `${calDate.getFullYear()}-${String(calDate.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    closeCal(); loadDate(ds);
+function pickDay(y, m, d) {
+    // Capture y/m at click-build time so later navMonth cannot change the pick
+    const ds = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    closeCal();
+    if (isToday(ds)) {
+        window.location.href = '/';
+        return;
+    }
+    loadDate(ds);
 }
 function pickToday() {
-    const t = new Date();
-    const ds = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
-    closeCal(); loadDate(ds);
+    window.location.href = '/';
 }
 
 /* ─── fetch + render ────────────────────────────────────── */
 function loadDate(ds) {
+    if (isToday(ds)) {
+        window.location.href = '/';
+        return;
+    }
     document.getElementById('loadScrim').style.display = 'flex';
+    // Cancel any in-flight sequential loads from the previous date
+    seqQueue = [];
+    seqLoading = false;
     history.pushState({}, '', '/date/' + ds);
-    const [y,m,d] = ds.split('-');
-    currentViewDate = new Date(+y, +m-1, +d, 12, 0, 0);
+    const [y,m,d] = ds.split('-').map(Number);
+    currentViewDate = new Date(y, m - 1, d, 12, 0, 0);
 
     fetch('/get_photos/' + ds).then(r => r.json()).then(data => {
         render(data);
@@ -537,7 +572,7 @@ function render(data) {
 
         data.media.images.filter(i => i.year === yr).forEach(i => {
             html += `<div class="grid-item">
-                <img data-seqsrc="/${i.path}?w=${IMG_W}&q=${IMG_Q}" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" data-fullsrc="/${i.path}" alt="" class="seq-img" onclick="openLB(this)">
+                <img data-path="/${i.path}" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="" class="seq-img" onclick="openLB(this)">
                 <button class="rotate-btn" onclick="rotateImg(this, '${i.path}', event)">↻</button>
             </div>`;
         });

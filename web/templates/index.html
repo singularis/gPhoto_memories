@@ -9,7 +9,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='brand.png') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles/main.css') }}?v=3">
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles/main.css') }}?v=6">
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='brand.png') }}">
 </head>
 <body>
@@ -20,7 +21,7 @@
         <img class="brand-logo" src="{{ url_for('static', filename='brand.png') }}" alt="">
         <span class="brand-name">Memories</span>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;">
+    <div class="topbar-nav">
         <button class="topbar-icon-btn" onclick="goPrev()">&lsaquo;</button>
         <button class="topbar-today-btn" onclick="goToday()">Today</button>
         <button class="topbar-icon-btn" onclick="goNext()">&rsaquo;</button>
@@ -39,7 +40,7 @@
 <!-- ═══ MEDIA ══════════════════════════════════════════════ -->
 <div id="feed">
 {% if years_found %}
-    {% for year in years_found|sort|reverse %}
+    {% for year in years_found %}
     <div class="year-group">
         <div class="year-divider">
             <span class="year-divider-label">{{ year }}</span>
@@ -48,8 +49,8 @@
         </div>
         <div class="grid">
             {% for img in media['images'] if img.year == year %}
-            <div class="grid-item">
-                <img data-path="/{{ img.path }}" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="" class="seq-img" onclick="openLB(this)">
+            <div class="grid-item" onclick="openLB(this.querySelector('img'))">
+                <img data-path="/{{ img.path }}" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="" class="seq-img">
                 <button class="rotate-btn" onclick="rotateImg(this, '{{ img.path }}', event)">↻</button>
             </div>
             {% endfor %}
@@ -74,9 +75,26 @@
 <!-- ═══ LIGHTBOX ═══════════════════════════════════════════ -->
 <div class="lb" id="lb" onclick="closeLB(event)">
     <button class="lb-x" onclick="closeLB(event)">✕</button>
+    <button class="lb-nav lb-prev" id="lbPrev" onclick="lbStep(-1, event)" aria-label="Previous">‹</button>
+    <button class="lb-nav lb-next" id="lbNext" onclick="lbStep(1, event)" aria-label="Next">›</button>
+    <div class="lb-day" id="lbDay" onclick="event.stopPropagation()"></div>
+    <div class="lb-transport" onclick="event.stopPropagation()">
+        <button class="lb-speed" onclick="setPlaySeconds(stepPlaySeconds(-1), true)" aria-label="Faster">−</button>
+        <span class="lb-speed-label" id="lbSpeedLabel">3s</span>
+        <button class="lb-play" id="lbReverse" onclick="toggleReverse(event)" aria-label="Play backwards">◀</button>
+        <button class="lb-play" id="lbPlay" onclick="toggleAutoplay(event)" aria-label="Play">▶</button>
+        <button class="lb-speed" onclick="setPlaySeconds(stepPlaySeconds(1), true)" aria-label="Slower">+</button>
+    </div>
     <button class="lb-rotate" onclick="rotateLbImg(event)">↻</button>
     <img src="" alt="" onclick="closeLB(event)">
 </div>
+
+<nav class="tabbar" aria-label="Days">
+    <button onclick="goPrev()" aria-label="Previous day">‹</button>
+    <button onclick="goToday()">Today</button>
+    <button onclick="openCal()"><span id="tabDate">{{ date.strftime('%b %d') }}</span></button>
+    <button onclick="goNext()" aria-label="Next day">›</button>
+</nav>
 
 <!-- ═══ CALENDAR MODAL ════════════════════════════════════= -->
 <div class="modal-bg" id="calModal">
@@ -126,7 +144,7 @@
                     <button class="btn-ghost" style="padding:0 12px" onclick="adjustScale('image', 0.1)">+</button>
                 </div>
             </div>
-            <div>
+            <div style="margin-bottom: 20px;">
                 <div style="margin-bottom: 8px; font-weight: 500;">
                     Font Size: <span id="fontScaleValDisplay">1.0</span>x
                 </div>
@@ -135,6 +153,22 @@
                     <input type="range" id="fontScale" min="0.5" max="4.0" step="0.1" value="1.0" 
                            oninput="previewScale('font', this.value)" style="flex:1;">
                     <button class="btn-ghost" style="padding:0 12px" onclick="adjustScale('font', 0.1)">+</button>
+                </div>
+            </div>
+            <div style="margin-bottom: 20px;">
+                <div style="margin-bottom: 8px; font-weight: 500;">
+                    Time between photos: <span id="playSecondsLabel">3s</span>
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <button type="button" class="btn-ghost" style="flex:1" onclick="setPlaySeconds(stepPlaySeconds(1), false)">Slower</button>
+                    <button type="button" class="btn-ghost" style="flex:1" onclick="setPlaySeconds(stepPlaySeconds(-1), false)">Faster</button>
+                </div>
+            </div>
+            <div>
+                <div style="margin-bottom: 8px; font-weight: 500;">Show first</div>
+                <div style="display:flex; gap:8px;">
+                    <button type="button" id="orderNewer" class="btn-fill" style="flex:1" onclick="previewOrder('newer')">Newer first</button>
+                    <button type="button" id="orderOlder" class="btn-ghost" style="flex:1" onclick="previewOrder('older')">Older first</button>
                 </div>
             </div>
         </div>
@@ -160,6 +194,9 @@ let currentViewDate = new Date({{ date.year }}, {{ date.month - 1 }}, {{ date.da
 let calDate = new Date(currentViewDate.getFullYear(), currentViewDate.getMonth(), 1);
 let currentImageScale = 2.0;
 let currentFontScale = 2.0;
+let currentYearOrder = 'newer';
+let playSeconds = 3;
+let savedPlaySeconds = 3;
 const MONTHS = ['January','February','March','April','May','June',
                 'July','August','September','October','November','December'];
 
@@ -210,9 +247,62 @@ function adjustScale(type, delta) {
     const input = document.getElementById(type === 'image' ? 'sizeScale' : 'fontScale');
     previewScale(type, parseFloat(input.value) + delta);
 }
+function applyYearOrder(order) {
+    const feed = document.getElementById('feed');
+    const groups = Array.from(feed.querySelectorAll('.year-group'));
+    groups.sort((a, b) => {
+        const ya = parseInt(a.querySelector('.year-divider-label').textContent, 10);
+        const yb = parseInt(b.querySelector('.year-divider-label').textContent, 10);
+        return order === 'older' ? ya - yb : yb - ya;
+    });
+    groups.forEach(g => feed.appendChild(g));
+}
+function previewOrder(order) {
+    document.getElementById('orderNewer').className = order === 'newer' ? 'btn-fill' : 'btn-ghost';
+    document.getElementById('orderOlder').className = order === 'older' ? 'btn-fill' : 'btn-ghost';
+    applyYearOrder(order);
+}
+function stepPlaySeconds(dir) {
+    // +1 waits longer (slower). -1 waits less (faster), down to 0.2s.
+    let n = playSeconds;
+    if (n < 1 || (dir < 0 && n <= 1)) n = Math.round((n + dir * 0.2) * 10) / 10;
+    else n = n + dir;
+    return n;
+}
+function setPlaySeconds(n, commit) {
+    playSeconds = Math.round(Math.max(0.2, Math.min(15, n)) * 10) / 10;
+    const label = (Number.isInteger(playSeconds) ? playSeconds : playSeconds.toFixed(1)) + 's';
+    const settingsLabel = document.getElementById('playSecondsLabel');
+    const liveLabel = document.getElementById('lbSpeedLabel');
+    if (settingsLabel) settingsLabel.textContent = label;
+    if (liveLabel) liveLabel.textContent = label;
+    if (lbTimer) {
+        clearInterval(lbTimer);
+        lbTimer = setInterval(autoplayTick, playSeconds * 1000);
+    }
+    if (commit) {
+        savedPlaySeconds = playSeconds;
+        persistSettings();
+    }
+}
+function persistSettings() {
+    fetch('/api/settings', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            image_scale: currentImageScale,
+            font_scale: currentFontScale,
+            year_order: currentYearOrder,
+            play_seconds: playSeconds
+        })
+    });
+}
 function openSettings() {
+    savedPlaySeconds = playSeconds;
     previewScale('image', currentImageScale);
     previewScale('font', currentFontScale);
+    previewOrder(currentYearOrder);
+    setPlaySeconds(playSeconds, false);
     const m = document.getElementById('settingsModal');
     m.style.display = 'block';
     requestAnimationFrame(() => m.classList.add('open'));
@@ -220,6 +310,8 @@ function openSettings() {
 function closeSettings() {
     previewScale('image', currentImageScale); // revert if not saved
     previewScale('font', currentFontScale);
+    previewOrder(currentYearOrder);
+    setPlaySeconds(savedPlaySeconds, false);
     const m = document.getElementById('settingsModal');
     m.classList.remove('open');
     setTimeout(() => m.style.display = 'none', 200);
@@ -227,11 +319,10 @@ function closeSettings() {
 function saveSettings() {
     currentImageScale = parseFloat(document.getElementById('sizeScale').value);
     currentFontScale = parseFloat(document.getElementById('fontScale').value);
-    fetch('/api/settings', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ image_scale: currentImageScale, font_scale: currentFontScale })
-    }).then(() => closeSettings());
+    currentYearOrder = document.getElementById('orderOlder').classList.contains('btn-fill') ? 'older' : 'newer';
+    savedPlaySeconds = playSeconds;
+    persistSettings();
+    closeSettings();
 }
 
 // Load settings on boot
@@ -240,8 +331,12 @@ fetch('/photos/settings.json?cb=' + new Date().getTime())
     .then(d => {
         if(d.image_scale) currentImageScale = parseFloat(d.image_scale);
         if(d.font_scale) currentFontScale = parseFloat(d.font_scale);
+        if(d.year_order === 'older' || d.year_order === 'newer') currentYearOrder = d.year_order;
+        if(d.play_seconds) savedPlaySeconds = playSeconds = Math.round(Math.max(0.2, Math.min(15, parseFloat(d.play_seconds) || 3)) * 10) / 10;
         previewScale('image', currentImageScale);
         previewScale('font', currentFontScale);
+        applyYearOrder(currentYearOrder);
+        setPlaySeconds(playSeconds, false);
     }).catch(() => {
         // defaults
         previewScale('image', 2.0);
@@ -250,6 +345,17 @@ fetch('/photos/settings.json?cb=' + new Date().getTime())
         currentFontScale = 2.0;
     }).finally(() => {
         startSequentialLoad();
+        const resume = sessionStorage.getItem('gphotoPlay');
+        if (resume) {
+            sessionStorage.removeItem('gphotoPlay');
+            const imgs = document.querySelectorAll('.grid-item img');
+            const target = resume === 'back' ? imgs[imgs.length - 1] : imgs[0];
+            if (target) {
+                openLB(target);
+                if (resume === 'back') toggleReverse();
+                else toggleAutoplay();
+            }
+        }
     });
 
 /* ─── sequential image loading ──────────────────────────── */
@@ -295,43 +401,148 @@ function loadNextSeq() {
 /* ─── lightbox ──────────────────────────────────────────── */
 let currentLbIndex = -1;
 let lbImageSources = [];
+let lbToken = 0;
+
+function promoteThumb(img) {
+    if (!img || !img.dataset.path) return;
+    if (img.complete && img.naturalWidth > 1) return;
+    seqQueue = seqQueue.filter(el => el !== img);
+    img.classList.remove('seq-img');
+    img.onload = () => img.classList.add('loaded');
+    img.onerror = () => {};
+    if (!img.src || img.src.startsWith('data:')) img.src = thumbSrc(img);
+}
 
 function openLB(imgEl) {
-    const allImgs = Array.from(document.querySelectorAll('.grid-item:not(.video-item) img'));
+    if (!imgEl) return;
+    const allImgs = Array.from(document.querySelectorAll('.grid-item img'));
     currentLbIndex = allImgs.indexOf(imgEl);
+    if (currentLbIndex === -1) return;
     lbImageSources = allImgs.map(fullSrc);
-    if (currentLbIndex !== -1) {
-        showLbIndex(currentLbIndex);
-    }
+    showLbIndex(currentLbIndex);
 }
 
 function showLbIndex(idx) {
     if(idx < 0 || idx >= lbImageSources.length) return;
     currentLbIndex = idx;
     const lb = document.getElementById('lb');
-    
-    // Force a micro-delay for iOS Safari repaint bug on swipe
-    setTimeout(() => {
-        lb.querySelector('img').src = lbImageSources[idx];
-    }, 10);
-    
+    const lbImg = lb.querySelector('img');
+    const gridImg = document.querySelectorAll('.grid-item img')[idx];
+    const token = ++lbToken;
+
+    // Open on the thumbnail already on screen. The sharp copy replaces it when ready.
+    promoteThumb(gridImg);
+    if (gridImg && gridImg.complete && gridImg.naturalWidth > 1) {
+        lbImg.src = gridImg.currentSrc || gridImg.src;
+    }
+
+    const full = new Image();
+    full.onload = () => {
+        if (token !== lbToken) return;
+        lbImg.src = full.src;
+        if (idx + 1 < lbImageSources.length) new Image().src = lbImageSources[idx + 1];
+        if (idx - 1 >= 0) new Image().src = lbImageSources[idx - 1];
+    };
+    full.src = lbImageSources[idx];
+
     lb.style.display = 'flex';
     requestAnimationFrame(() => {
         requestAnimationFrame(() => lb.classList.add('open'));
     });
     document.body.style.overflow = 'hidden';
-    
-    // Preload next/prev images
-    if (idx + 1 < lbImageSources.length) new Image().src = lbImageSources[idx + 1];
-    if (idx - 1 >= 0) new Image().src = lbImageSources[idx - 1];
+    document.getElementById('lbPrev').disabled = idx <= 0;
+    document.getElementById('lbNext').disabled = idx >= lbImageSources.length - 1;
+    const dayLabel = document.getElementById('lbDay');
+    if (dayLabel && !dayChanging) {
+        dayLabel.textContent = document.getElementById('heroDate').textContent;
+    }
 }
+
+function lbStep(delta, e) {
+    if (e) e.stopPropagation();
+    stopAutoplay();
+    showLbIndex(currentLbIndex + delta);
+}
+
+let lbTimer = null;
+let playDirection = 1;
+let dayChanging = false;
+let emptySkips = 0;
+
+function paintPlayButtons() {
+    const playing = !!lbTimer;
+    const play = document.getElementById('lbPlay');
+    const back = document.getElementById('lbReverse');
+    play.classList.toggle('on', playing && playDirection > 0);
+    back.classList.toggle('on', playing && playDirection < 0);
+    play.textContent = playing && playDirection > 0 ? '⏸' : '▶';
+    back.textContent = '◀';
+}
+
+function stopAutoplay() {
+    if (lbTimer) { clearInterval(lbTimer); lbTimer = null; }
+    dayChanging = false;
+    paintPlayButtons();
+}
+
+function shiftPlayDay() {
+    if (playDirection < 0) goPrev();
+    else goNext();
+}
+
+function autoplayTick() {
+    if (dayChanging) return;
+    const next = currentLbIndex + playDirection;
+    if (next >= 0 && next < lbImageSources.length) {
+        showLbIndex(next);
+        return;
+    }
+    dayChanging = true;
+    emptySkips = 0;
+    const dayLabel = document.getElementById('lbDay');
+    if (dayLabel) dayLabel.textContent = playDirection < 0 ? 'Previous day' : 'Next day';
+    shiftPlayDay();
+}
+
+function continueAutoplay() {
+    if (!dayChanging) return;
+    const imgs = document.querySelectorAll('.grid-item img');
+    const target = playDirection < 0 ? imgs[imgs.length - 1] : imgs[0];
+    if (target) {
+        dayChanging = false;
+        emptySkips = 0;
+        const dayLabel = document.getElementById('lbDay');
+        if (dayLabel) dayLabel.textContent = document.getElementById('heroDate').textContent;
+        openLB(target);
+        return;
+    }
+    if (emptySkips < 21) {
+        emptySkips++;
+        shiftPlayDay();
+        return;
+    }
+    stopAutoplay();
+}
+
+function startAutoplay(direction, e) {
+    if (e) e.stopPropagation();
+    if (lbTimer && playDirection === direction) { stopAutoplay(); return; }
+    playDirection = direction;
+    if (lbTimer) clearInterval(lbTimer);
+    lbTimer = setInterval(autoplayTick, playSeconds * 1000);
+    paintPlayButtons();
+}
+
+function toggleAutoplay(e) { startAutoplay(1, e); }
+function toggleReverse(e) { startAutoplay(-1, e); }
 
 let lastSwipeTime = 0;
 
 function closeLB(e) {
     // Ignore clicks that fire immediately after a swipe
     if (Date.now() - lastSwipeTime < 500) return;
-    
+    stopAutoplay();
+
     const lb = document.getElementById('lb');
     lb.classList.remove('open');
     // Wait for fade-out transition to finish before hiding
@@ -353,8 +564,10 @@ document.getElementById('lb').addEventListener('touchend', e => {
     if (Math.abs(touchEndX - touchStartX) > 50) {
         lastSwipeTime = Date.now();
         if (touchEndX < touchStartX - 50 && currentLbIndex < lbImageSources.length - 1) {
+            stopAutoplay();
             showLbIndex(currentLbIndex + 1); // swipe left
         } else if (touchEndX > touchStartX + 50 && currentLbIndex > 0) {
+            stopAutoplay();
             showLbIndex(currentLbIndex - 1); // swipe right
         }
     }
@@ -521,10 +734,12 @@ function pickToday() {
 /* ─── fetch + render ────────────────────────────────────── */
 function loadDate(ds) {
     if (isToday(ds)) {
+        if (lbTimer || dayChanging) sessionStorage.setItem('gphotoPlay', playDirection < 0 ? 'back' : '1');
         window.location.href = '/';
         return;
     }
     document.getElementById('loadScrim').style.display = 'flex';
+    window.scrollTo(0, 0);
     // Cancel any in-flight sequential loads from the previous date
     seqQueue = [];
     seqLoading = false;
@@ -534,9 +749,12 @@ function loadDate(ds) {
 
     fetch('/get_photos/' + ds).then(r => r.json()).then(data => {
         render(data);
+        window.scrollTo(0, 0);
         document.getElementById('loadScrim').style.display = 'none';
+        continueAutoplay();
     }).catch(() => {
         document.getElementById('loadScrim').style.display = 'none';
+        if (dayChanging) stopAutoplay();
     });
 }
 
@@ -547,6 +765,7 @@ function render(data) {
 
     document.getElementById('heroDate').textContent = nice;
     document.getElementById('btnDate').textContent = nice;
+    document.getElementById('tabDate').textContent = dt.toLocaleDateString('en-US', {month:'short', day:'numeric'});
     document.getElementById('heroSub').textContent =
         data.media.images.length + ' photos · ' + data.media.videos.length +
         ' videos · ' + data.years_found.length + ' years of memories';
@@ -561,7 +780,8 @@ function render(data) {
 
     const now = new Date().getFullYear();
     let html = '';
-    data.years_found.sort((a,b) => b-a).forEach(yr => {
+    const years = data.years_found.slice().sort((a, b) => currentYearOrder === 'older' ? a - b : b - a);
+    years.forEach(yr => {
         const ago = now - yr;
         html += `<div class="year-group">
             <div class="year-divider">
@@ -571,8 +791,8 @@ function render(data) {
             </div><div class="grid">`;
 
         data.media.images.filter(i => i.year === yr).forEach(i => {
-            html += `<div class="grid-item">
-                <img data-path="/${i.path}" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="" class="seq-img" onclick="openLB(this)">
+            html += `<div class="grid-item" onclick="openLB(this.querySelector('img'))">
+                <img data-path="/${i.path}" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="" class="seq-img">
                 <button class="rotate-btn" onclick="rotateImg(this, '${i.path}', event)">↻</button>
             </div>`;
         });
@@ -591,8 +811,8 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape') { closeLB(e); closeCal(); closeSettings(); }
     const lb = document.getElementById('lb');
     if (lb && lb.classList.contains('open')) {
-        if (e.key === 'ArrowRight' && currentLbIndex < lbImageSources.length - 1) showLbIndex(currentLbIndex + 1);
-        if (e.key === 'ArrowLeft' && currentLbIndex > 0) showLbIndex(currentLbIndex - 1);
+        if (e.key === 'ArrowRight') lbStep(1);
+        if (e.key === 'ArrowLeft') lbStep(-1);
     }
 });
 window.addEventListener('click', e => {

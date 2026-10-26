@@ -1,5 +1,19 @@
 # Get google photos and render your memories 
 
+## Web UI (`web/`)
+
+Flask serves the photo API and resizing; the page is a React 19 + Vite + Tailwind 4 app in `web/frontend`.
+
+```
+cd web/frontend
+npm install
+API_ORIGIN=http://racoon:30500 npm run dev   # hot reload against the cluster's API
+npm run build                                # what the Docker image runs
+```
+
+`scripts/deploy_web.sh` builds the image (frontend included), pushes it and rolls out the deployment.
+Vite 8 needs Node 20.19+ locally; the image builds with Node 22.
+
 
 ## google-client-app
 Flask, Flask-Login, Login with Google, App setup as Google Client

@@ -50,6 +50,12 @@ body { min-height: 100vh; background: var(--bg); }
     display: flex; align-items: center; gap: 12px;
 }
 
+.topbar-nav {
+    display: flex; align-items: center; gap: 8px;
+}
+
+.tabbar { display: none; }
+
 .brand-logo {
     width: 34px; height: 34px;
     border-radius: 50%;
@@ -183,6 +189,8 @@ body { min-height: 100vh; background: var(--bg); }
 
 .grid-item img.seq-img {
     opacity: 0;
+    /* Invisible photos still cover the card. Let the tap reach the card. */
+    pointer-events: none;
 }
 .grid-item img.loaded {
     opacity: 1;
@@ -339,6 +347,60 @@ body { min-height: 100vh; background: var(--bg); }
     z-index: 10;
 }
 .lb-rotate:hover { background: rgba(0,0,0,0.8); }
+
+.lb-nav {
+    position: absolute; top: 50%;
+    transform: translateY(-50%);
+    width: 56px; height: 56px;
+    border: none; border-radius: 50%;
+    background: rgba(255,255,255,.18);
+    color: #fff;
+    font-size: 34px; line-height: 1;
+    cursor: pointer;
+    z-index: 10;
+    display: flex; align-items: center; justify-content: center;
+}
+.lb-nav:hover { background: rgba(255,255,255,.32); }
+.lb-nav:disabled { opacity: .28; cursor: default; }
+.lb-prev { left: 24px; }
+.lb-next { right: 24px; }
+
+.lb-day {
+    position: absolute; top: 20px; left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    color: #fff;
+    font: 600 15px/1 var(--font);
+    background: rgba(0,0,0,.4);
+    border-radius: 999px;
+    padding: 8px 14px;
+}
+.lb-transport {
+    position: absolute; bottom: 32px; left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    display: flex; align-items: center; gap: 8px;
+}
+.lb-play {
+    width: 56px; height: 56px;
+    border: none; border-radius: 50%;
+    background: rgba(0,0,0,.6);
+    color: #fff; font-size: 22px; line-height: 1;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+}
+.lb-play.on { background: var(--accent); }
+.lb-speed {
+    width: 44px; height: 44px;
+    border: none; border-radius: 50%;
+    background: rgba(255,255,255,.18);
+    color: #fff; font-size: 22px; line-height: 1;
+    cursor: pointer;
+}
+.lb-speed-label {
+    min-width: 32px; text-align: center;
+    color: #fff; font: 600 14px/1 var(--font);
+}
 
 /* ═══════════════════════════════════════════════════════════
    CALENDAR MODAL
@@ -554,14 +616,39 @@ body { -ms-overflow-style: none; scrollbar-width: none; }
     .year-divider-label { font-size: calc(14px * var(--font-scale)); }
     .year-divider-ago   { font-size: calc(12px * var(--font-scale)); }
 
+    .topbar-nav { display: none; }
+
+    .tabbar {
+        display: flex;
+        position: fixed; left: 0; right: 0; bottom: 0; z-index: 600;
+        height: calc(58px + env(safe-area-inset-bottom));
+        padding: 0 8px env(safe-area-inset-bottom);
+        background: rgba(245,242,237,.96);
+        backdrop-filter: blur(10px);
+        border-top: 1px solid var(--border);
+        justify-content: space-around;
+        align-items: center;
+    }
+    .tabbar button {
+        min-width: 64px; height: 44px;
+        border: none; border-radius: 12px;
+        background: transparent;
+        color: var(--text);
+        font: 600 15px/1 var(--font);
+        cursor: pointer;
+    }
+    .tabbar button:active { background: var(--accent-soft); }
+    body { padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
+
     .grid {
-        grid-template-columns: repeat(auto-fill, minmax(calc(120px * var(--scale)), 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(min(calc(120px * var(--scale)), 100%), 1fr));
         gap: 2px;
         border-radius: 6px;
     }
 
     .grid-item img, .vid-card, .grid video {
         height: calc(120px * var(--scale));
+        aspect-ratio: auto;
     }
 
     .grid-item { border-radius: 3px; }
@@ -587,11 +674,21 @@ body { -ms-overflow-style: none; scrollbar-width: none; }
         border-radius: 0;
     }
 
+    .lb-nav { display: none; }
+
     .lb-x {
         top: max(12px, env(safe-area-inset-top));
         right: 12px;
         width: 40px; height: 40px;
     }
+
+    .lb-rotate {
+        bottom: max(16px, env(safe-area-inset-bottom));
+        right: max(12px, env(safe-area-inset-right));
+    }
+
+    .lb-transport { bottom: max(16px, env(safe-area-inset-bottom)); }
+    .lb-day { top: max(14px, env(safe-area-inset-top)); }
 
     /* Calendar modal takes more space on mobile */
     .modal-card {
@@ -612,11 +709,6 @@ body { -ms-overflow-style: none; scrollbar-width: none; }
 
 /* Small phones (iPhone SE, etc) */
 @media (max-width: 380px) {
-    .grid {
-        grid-template-columns: repeat(auto-fill, minmax(calc(150px * var(--scale)), 1fr));
-    }
-    .grid-item img, .vid-card, .grid video { height: calc(155px * var(--scale)); }
-
     .topbar-brand { gap: 8px; }
     .brand-name { font-size: calc(14px * var(--font-scale)); }
 

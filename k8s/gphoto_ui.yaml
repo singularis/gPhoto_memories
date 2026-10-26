@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: gphoto-flask
-          image: singularis314/gphoto:0.8
+          image: singularis314/gphoto:0.9
           imagePullPolicy: Always
           env:
             - name: TZ

@@ -1,0 +1,11 @@
+{
+  "name": "Memories",
+  "short_name": "Memories",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f2ed",
+  "theme_color": "#f5f2ed",
+  "icons": [
+    { "src": "/static/brand.png", "type": "image/png", "sizes": "192x192", "purpose": "any" }
+  ]
+}

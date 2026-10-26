@@ -138,3 +138,5 @@ secret_data/
 # Node
 node_modules/
 package-lock.json
+# The web image builds with `npm ci`, which needs the lockfile.
+!web/frontend/package-lock.json

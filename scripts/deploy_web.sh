@@ -8,7 +8,7 @@ set -e
 # Change to the web directory
 cd "$(dirname "$0")/../web"
 
-TAG="0.8"
+TAG="0.9"
 STATIC_PVC="/other_hdd/gphoto"
 
 echo "── Building docker.io/singularis314/gphoto:$TAG ──"
@@ -19,6 +19,7 @@ docker push docker.io/singularis314/gphoto:$TAG
 
 echo "── Syncing static files to PVC ($STATIC_PVC) ──"
 cp -r static/styles/main.css "$STATIC_PVC/styles/main.css"
+cp -f static/manifest.json "$STATIC_PVC/manifest.json"
 cp -f static/brand.jpeg "$STATIC_PVC/brand.jpeg" 2>/dev/null || true
 
 echo "── Rolling out ──"
